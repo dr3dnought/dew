@@ -176,6 +176,23 @@ func Desc(col any) Expression {
 	}
 }
 
+type rawExpr struct {
+	sql  string
+	args []any
+}
+
+func (e *rawExpr) Sql() string { return e.sql }
+func (e *rawExpr) Args() []any { return e.args }
+
+func Raw(sql string, args ...any) Expression {
+	return &rawExpr{
+		sql:  sql,
+		args: args,
+	}
+}
+
+// * Helpers * //
+
 func buildPlaceholders(count int) string {
 	placeholders := make([]string, count)
 	for i := range placeholders {
