@@ -23,13 +23,16 @@ func Open(driverName, dataSourceName string) (*DB, error) {
 type Selector[T any] struct {
 	db        *DB
 	tableName string
-	columns   []Expression
+	columns   []Column
 	wheres    []string
 	args      []any
 
 	limitCount  int
 	offsetCount int
 	orderBys    []Expression
+
+	groupBys []Expression
+	havings  []Expression
 }
 
 func From[T any](db *DB) *Selector[T] {
@@ -54,7 +57,7 @@ func (s *Selector[T]) Where(expr ...Expression) *Selector[T] {
 	return s
 }
 
-func (s *Selector[T]) Select(columns ...Expression) *Selector[T] {
+func (s *Selector[T]) Select(columns ...Column) *Selector[T] {
 	s.columns = columns
 	return s
 }
@@ -71,6 +74,16 @@ func (s *Selector[T]) Offset(count int) *Selector[T] {
 
 func (s *Selector[T]) OrderBy(expr ...Expression) *Selector[T] {
 	s.orderBys = append(s.orderBys, expr...)
+	return s
+}
+
+func (s *Selector[T]) GroupBy(columns ...Expression) *Selector[T] {
+	s.groupBys = append(s.groupBys, columns...)
+	return s
+}
+
+func (s *Selector[T]) Having(columns ...Expression) *Selector[T] {
+	s.havings = append(s.havings, columns...)
 	return s
 }
 
@@ -91,38 +104,33 @@ func (s *Selector[T]) One(ctxs ...context.Context) (*T, error) {
 	if len(results) == 0 {
 		return nil, ErrNotFound
 	}
-	// Возвращаем указатель на элемент слайса
+
 	return &results[0], nil
 }
 
 func (s *Selector[T]) All(ctxs ...context.Context) ([]T, error) {
 	ctx := getCtx(ctxs)
 
-	// Шаг 1: Строим SQL
 	query := s.buildQuery()
 
-	// Шаг 2: Выполняем запрос
 	rows, err := s.db.QueryContext(ctx, query, s.args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	// Шаг 3: Подготовка рефлексии (Оптимизация)
 	modelType := reflect.TypeOf(new(T)).Elem()
 	targetIndices, err := resolveScanIndices(modelType, s.columns)
 	if err != nil {
 		return nil, err
 	}
 
-	// Шаг 4: Сканирование
 	var results []T
 
 	for rows.Next() {
 		newItem := reflect.New(modelType)
 		val := newItem.Elem()
 
-		// Получаем список адресов (&field), куда драйвер запишет данные
 		scanArgs := prepareScanArgs(val, targetIndices)
 
 		if err := rows.Scan(scanArgs...); err != nil {
@@ -153,7 +161,6 @@ func (s *Selector[T]) First() (*T, error) {
 // * Utils Functions * //
 
 func (s *Selector[T]) buildQuery() string {
-	// 1. SELECT clause
 	selectClause := "*"
 	if len(s.columns) > 0 {
 		colSqls := make([]string, len(s.columns))
@@ -165,12 +172,10 @@ func (s *Selector[T]) buildQuery() string {
 
 	query := fmt.Sprintf("SELECT %s FROM %s", selectClause, s.tableName)
 
-	// 2. WHERE clause
 	if len(s.wheres) > 0 {
 		query += " WHERE " + strings.Join(s.wheres, " AND ")
 	}
 
-	// 3. ORDER BY clause
 	if len(s.orderBys) > 0 {
 		var orderSqls []string
 		for _, order := range s.orderBys {
@@ -179,7 +184,16 @@ func (s *Selector[T]) buildQuery() string {
 		query += " ORDER BY " + strings.Join(orderSqls, ", ")
 	}
 
-	// 4. LIMIT & OFFSET
+	if len(s.groupBys) > 0 {
+		var groupSqls []string
+		for _, order := range s.groupBys {
+			groupSqls = append(groupSqls, order.Sql())
+		}
+		query += " GROUP BY " + strings.Join(groupSqls, ", ")
+	}
+
+	// TOOD: Add having
+
 	if s.limitCount > 0 {
 		query += fmt.Sprintf(" LIMIT %d", s.limitCount)
 	}
@@ -190,7 +204,7 @@ func (s *Selector[T]) buildQuery() string {
 	return query
 }
 
-func resolveScanIndices(modelType reflect.Type, columns []Expression) ([]int, error) {
+func resolveScanIndices(modelType reflect.Type, columns []Column) ([]int, error) {
 	// If there is no specific columns, return nil
 	if len(columns) == 0 {
 		return nil, nil
@@ -204,7 +218,7 @@ func resolveScanIndices(modelType reflect.Type, columns []Expression) ([]int, er
 
 	indices := make([]int, len(columns))
 	for i, col := range columns {
-		colName := col.Sql()
+		colName := col.ColumnName()
 		idx, ok := fieldMap[strings.ToLower(colName)]
 		if !ok {
 			return nil, fmt.Errorf("dew: struct field for column '%s' not found", colName)
