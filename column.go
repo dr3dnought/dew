@@ -81,3 +81,30 @@ func (c StringColumn) In(vals ...string) Expression {
 		args: args,
 	}
 }
+
+type BoolColumn string
+
+func (c BoolColumn) Sql() string        { return string(c) }
+func (c BoolColumn) Args() []any        { return nil }
+func (c BoolColumn) ColumnName() string { return string(c) }
+
+func (c BoolColumn) Eq(val bool) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s = ?", c),
+		args: []any{val},
+	}
+}
+
+func (c BoolColumn) IsTrue() Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s = ?", c),
+		args: []any{true},
+	}
+}
+
+func (c BoolColumn) IsFalse() Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s = ?", c),
+		args: []any{false},
+	}
+}
