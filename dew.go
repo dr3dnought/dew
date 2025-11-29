@@ -35,15 +35,10 @@ type Selector[T any] struct {
 	havings  []Expression
 }
 
-func From[T any](db *DB) *Selector[T] {
-	var t T
-	modelType := reflect.TypeOf(t)
-
-	tableName := strings.ToLower(modelType.Name()) + "s"
-
+func From[T any](db *DB, schema Tabler) *Selector[T] {
 	return &Selector[T]{
 		db:        db,
-		tableName: tableName,
+		tableName: schema.TableName(),
 	}
 }
 
@@ -93,6 +88,9 @@ func (s *Selector[T]) ToSql() (string, []any) {
 
 // * SELECT EXECUTION * //
 
+// One выполняет запрос с LIMIT 1 и возвращает первую строку как указатель на модель T.
+// Возвращает ErrNotFound если строк нет.
+// Пример: user, err := dew.From(db, UserSchema).Where(...).One() вернет *User
 func (s *Selector[T]) One(ctxs ...context.Context) (*T, error) {
 	ctx := getCtx(ctxs)
 
@@ -105,10 +103,10 @@ func (s *Selector[T]) One(ctxs ...context.Context) (*T, error) {
 		return nil, ErrNotFound
 	}
 
-	return &results[0], nil
+	return results[0], nil // results[0] уже указатель (*T)
 }
 
-func (s *Selector[T]) All(ctxs ...context.Context) ([]T, error) {
+func (s *Selector[T]) All(ctxs ...context.Context) ([]*T, error) {
 	ctx := getCtx(ctxs)
 
 	query := s.buildQuery()
@@ -125,7 +123,7 @@ func (s *Selector[T]) All(ctxs ...context.Context) ([]T, error) {
 		return nil, err
 	}
 
-	var results []T
+	var results []*T
 
 	for rows.Next() {
 		newItem := reflect.New(modelType)
@@ -136,7 +134,7 @@ func (s *Selector[T]) All(ctxs ...context.Context) ([]T, error) {
 		if err := rows.Scan(scanArgs...); err != nil {
 			return nil, err
 		}
-		results = append(results, *newItem.Interface().(*T))
+		results = append(results, newItem.Interface().(*T))
 	}
 
 	return results, nil
@@ -154,8 +152,131 @@ func (s *Selector[T]) First() (*T, error) {
 		return nil, ErrNotFound
 	}
 
-	result := results[0]
-	return &result, nil
+	return results[0], nil
+}
+
+func (s *Selector[T]) Scan(dest ...any) error {
+	return s.ScanCtx(context.Background(), dest...)
+}
+
+func (s *Selector[T]) ScanCtx(ctx context.Context, dest ...any) error {
+	if len(dest) == 0 {
+		return fmt.Errorf("dew: Scan expects at least one destination")
+	}
+
+	firstDest := dest[0]
+	val := reflect.ValueOf(firstDest)
+	if val.Kind() != reflect.Ptr || val.IsNil() {
+		return fmt.Errorf("dew: Scan expects a non-nil pointer")
+	}
+
+	elem := val.Elem()
+
+	if elem.Kind() == reflect.Slice {
+		s.limitCount = 0
+	}
+
+	query := s.buildQuery()
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	rows, err := s.db.QueryContext(ctx, query, s.args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	if elem.Kind() == reflect.Slice {
+		return s.scanIntoSlice(rows, elem)
+	}
+
+	return s.scanIntoOne(rows, firstDest)
+}
+
+func (s *Selector[T]) scanIntoSlice(rows *sql.Rows, sliceVal reflect.Value) error {
+	elemType := sliceVal.Type().Elem()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		return err
+	}
+	numColumns := len(columns)
+
+	var targetIndices []int
+	isStruct := elemType.Kind() == reflect.Struct
+
+	if isStruct {
+		fieldMap := buildFieldMap(elemType)
+
+		targetIndices = make([]int, numColumns)
+		for i, colName := range columns {
+			idx, ok := fieldMap[strings.ToLower(colName)]
+			if !ok {
+				return fmt.Errorf("dew: struct field for column '%s' not found", colName)
+			}
+			targetIndices[i] = idx
+		}
+	} else {
+		if numColumns != 1 {
+			return fmt.Errorf("dew: cannot scan %d columns into %s", numColumns, elemType.String())
+		}
+	}
+
+	for rows.Next() {
+		newElemPtr := reflect.New(elemType)
+
+		if isStruct {
+			elemVal := newElemPtr.Elem()
+			scanArgs := prepareScanArgs(elemVal, targetIndices)
+
+			if err := rows.Scan(scanArgs...); err != nil {
+				return err
+			}
+		} else {
+			if err := rows.Scan(newElemPtr.Interface()); err != nil {
+				return err
+			}
+		}
+
+		sliceVal.Set(reflect.Append(sliceVal, newElemPtr.Elem()))
+	}
+	return nil
+}
+
+func (s *Selector[T]) scanIntoOne(rows *sql.Rows, dest any) error {
+	if !rows.Next() {
+		return ErrNotFound
+	}
+
+	columns, err := rows.Columns()
+	if err != nil {
+		return err
+	}
+
+	val := reflect.ValueOf(dest).Elem()
+
+	if val.Kind() == reflect.Struct {
+		modelType := val.Type()
+		fieldMap := buildFieldMap(modelType)
+
+		scanArgs := make([]any, len(columns))
+		for i, colName := range columns {
+			idx, ok := fieldMap[strings.ToLower(colName)]
+			if !ok {
+				return fmt.Errorf("dew: struct field for column '%s' not found", colName)
+			}
+			scanArgs[i] = val.Field(idx).Addr().Interface()
+		}
+
+		return rows.Scan(scanArgs...)
+	}
+
+	if len(columns) != 1 {
+		return fmt.Errorf("dew: cannot scan %d columns into %s", len(columns), val.Type().String())
+	}
+
+	return rows.Scan(dest)
 }
 
 // * Utils Functions * //
@@ -204,6 +325,14 @@ func (s *Selector[T]) buildQuery() string {
 	return query
 }
 
+func buildFieldMap(typ reflect.Type) map[string]int {
+	fieldMap := make(map[string]int, typ.NumField())
+	for i := 0; i < typ.NumField(); i++ {
+		fieldMap[strings.ToLower(typ.Field(i).Name)] = i
+	}
+	return fieldMap
+}
+
 func resolveScanIndices(modelType reflect.Type, columns []Column) ([]int, error) {
 	// If there is no specific columns, return nil
 	if len(columns) == 0 {
@@ -211,10 +340,7 @@ func resolveScanIndices(modelType reflect.Type, columns []Column) ([]int, error)
 	}
 
 	// Build map: "field_name_in_lower_case" -> index
-	fieldMap := make(map[string]int, modelType.NumField())
-	for i := 0; i < modelType.NumField(); i++ {
-		fieldMap[strings.ToLower(modelType.Field(i).Name)] = i
-	}
+	fieldMap := buildFieldMap(modelType)
 
 	indices := make([]int, len(columns))
 	for i, col := range columns {
