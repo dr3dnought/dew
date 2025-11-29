@@ -14,108 +14,55 @@ func (c IntColumn) Args() []any        { return nil }
 func (c IntColumn) ColumnName() string { return string(c) }
 
 func (c IntColumn) Eq(val int) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s = ?", c),
-		args: []any{val},
-	}
+	return colEq(c, val)
 }
 
 func (c IntColumn) NotEq(val int) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s != ?", c),
-		args: []any{val},
-	}
+	return colNotEq(c, val)
 }
 
 func (c IntColumn) EqSub(subQuery Expression) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s = (%s)", c, subQuery.Sql()),
-		args: subQuery.Args(),
-	}
+	return colEqSub(c, subQuery)
 }
 
 func (c IntColumn) NotEqSub(subQuery Expression) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s != (%s)", c, subQuery.Sql()),
-		args: subQuery.Args(),
-	}
+	return colNotEqSub(c, subQuery)
 }
 
 func (c IntColumn) Gt(val int) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s > ?", c),
-		args: []any{val},
-	}
+	return colGt(c, val)
 }
 
 func (c IntColumn) Gte(val int) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s >= ?", c),
-		args: []any{val},
-	}
+	return colGte(c, val)
 }
 
 func (c IntColumn) Lt(val int) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s < ?", c),
-		args: []any{val},
-	}
+	return colLt(c, val)
 }
 
 func (c IntColumn) Lte(val int) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s <= ?", c),
-		args: []any{val},
-	}
+	return colLte(c, val)
 }
 
 func (c IntColumn) In(vals ...int) Expression {
-	if len(vals) == 0 {
-		return &simpleExpr{sql: "1=0"}
-	}
-	args := make([]any, len(vals))
-	for i, v := range vals {
-		args[i] = v
-	}
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s IN %s", c, buildPlaceholders(len(vals))),
-		args: args,
-	}
+	return colIn(c, convertToAny(vals...))
 }
 
 func (c IntColumn) InSub(subQuery Expression) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s IN (%s)", c, subQuery.Sql()),
-		args: subQuery.Args(),
-	}
+	return colInSub(c, subQuery)
 }
 
 func (c IntColumn) NotIn(vals ...int) Expression {
-	if len(vals) == 0 {
-		return &simpleExpr{sql: "1=1"}
-	}
-	args := make([]any, len(vals))
-	for i, v := range vals {
-		args[i] = v
-	}
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s NOT IN %s", c, buildPlaceholders(len(vals))),
-		args: args,
-	}
+	return colNotIn(c, convertToAny(vals...))
 }
 
 func (c IntColumn) NotInSub(subQuery Expression) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s NOT IN (%s)", c, subQuery.Sql()),
-		args: subQuery.Args(),
-	}
+	return colNotInSub(c, subQuery)
 }
 
 func (c IntColumn) Between(min, max int) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s BETWEEN ? AND ?", c),
-		args: []any{min, max},
-	}
+	return colBetween(c, min, max)
 }
 
 type StringColumn string
@@ -125,24 +72,15 @@ func (c StringColumn) Args() []any        { return nil }
 func (c StringColumn) ColumnName() string { return string(c) }
 
 func (c StringColumn) Eq(val string) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s = ?", c),
-		args: []any{val},
-	}
+	return colEq(c, val)
 }
 
 func (c StringColumn) EqSub(subQuery Expression) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s = (%s)", c, subQuery.Sql()),
-		args: subQuery.Args(),
-	}
+	return colEqSub(c, subQuery)
 }
 
 func (c StringColumn) NotEq(val string) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s != ?", c),
-		args: []any{val},
-	}
+	return colNotEq(c, val)
 }
 
 func (c StringColumn) Like(val string) Expression {
@@ -160,45 +98,19 @@ func (c StringColumn) NotLike(val string) Expression {
 }
 
 func (c StringColumn) In(vals ...string) Expression {
-	if len(vals) == 0 {
-		return &simpleExpr{sql: "1=0"}
-	}
-	args := make([]any, len(vals))
-	for i, v := range vals {
-		args[i] = v
-	}
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s IN %s", c, buildPlaceholders(len(vals))),
-		args: args,
-	}
+	return colIn(c, convertToAny(vals...))
 }
 
 func (c StringColumn) InSub(subQuery Expression) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s IN (%s)", c, subQuery.Sql()),
-		args: subQuery.Args(),
-	}
+	return colInSub(c, subQuery)
 }
 
 func (c StringColumn) NotIn(vals ...string) Expression {
-	if len(vals) == 0 {
-		return &simpleExpr{sql: "1=1"}
-	}
-	args := make([]any, len(vals))
-	for i, v := range vals {
-		args[i] = v
-	}
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s NOT IN %s", c, buildPlaceholders(len(vals))),
-		args: args,
-	}
+	return colNotIn(c, convertToAny(vals...))
 }
 
 func (c StringColumn) NotInSub(subQuery Expression) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s NOT IN (%s)", c, subQuery.Sql()),
-		args: subQuery.Args(),
-	}
+	return colNotInSub(c, subQuery)
 }
 
 type BoolColumn string
@@ -208,31 +120,19 @@ func (c BoolColumn) Args() []any        { return nil }
 func (c BoolColumn) ColumnName() string { return string(c) }
 
 func (c BoolColumn) Eq(val bool) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s = ?", c),
-		args: []any{val},
-	}
+	return colEq(c, val)
 }
 
 func (c BoolColumn) IsTrue() Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s = ?", c),
-		args: []any{true},
-	}
+	return colEq(c, true)
 }
 
 func (c BoolColumn) IsFalse() Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s = ?", c),
-		args: []any{false},
-	}
+	return colEq(c, false)
 }
 
 func (c BoolColumn) NotEq(val bool) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s != ?", c),
-		args: []any{val},
-	}
+	return colNotEq(c, val)
 }
 
 type FloatColumn string
@@ -242,106 +142,158 @@ func (c FloatColumn) Args() []any        { return nil }
 func (c FloatColumn) ColumnName() string { return string(c) }
 
 func (c FloatColumn) Eq(val float64) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s = ?", c),
-		args: []any{val},
-	}
+	return colEq(c, val)
 }
 
 func (c FloatColumn) NotEq(val float64) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s != ?", c),
-		args: []any{val},
-	}
+	return colNotEq(c, val)
 }
 
 func (c FloatColumn) EqSub(subQuery Expression) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s = (%s)", c, subQuery.Sql()),
-		args: subQuery.Args(),
-	}
+	return colEqSub(c, subQuery)
 }
 
 func (c FloatColumn) NotEqSub(subQuery Expression) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s != (%s)", c, subQuery.Sql()),
-		args: subQuery.Args(),
-	}
+	return colNotEqSub(c, subQuery)
 }
 
 func (c FloatColumn) Gt(val float64) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s > ?", c),
-		args: []any{val},
-	}
+	return colGt(c, val)
 }
 
 func (c FloatColumn) Gte(val float64) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s >= ?", c),
-		args: []any{val},
-	}
+	return colGte(c, val)
 }
 
 func (c FloatColumn) Lt(val float64) Expression {
-	return &simpleExpr{
-		sql:  fmt.Sprintf("%s < ?", c),
-		args: []any{val},
-	}
+	return colLt(c, val)
 }
 
 func (c FloatColumn) Lte(val float64) Expression {
+	return colLte(c, val)
+}
+
+func (c FloatColumn) In(vals ...float64) Expression {
+	return colIn(c, convertToAny(vals...))
+}
+
+func (c FloatColumn) InSub(subQuery Expression) Expression {
+	return colInSub(c, subQuery)
+}
+
+func (c FloatColumn) NotIn(vals ...float64) Expression {
+	return colNotIn(c, convertToAny(vals...))
+}
+
+func (c FloatColumn) NotInSub(subQuery Expression) Expression {
+	return colNotInSub(c, subQuery)
+}
+
+func (c FloatColumn) Between(min, max float64) Expression {
+	return colBetween(c, min, max)
+}
+
+func colEq(col Column, val any) Expression {
 	return &simpleExpr{
-		sql:  fmt.Sprintf("%s <= ?", c),
+		sql:  fmt.Sprintf("%s = ?", col.Sql()),
 		args: []any{val},
 	}
 }
 
-func (c FloatColumn) In(vals ...float64) Expression {
+func colNotEq(col Column, val any) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s != ?", col.Sql()),
+		args: []any{val},
+	}
+}
+
+func colEqSub(col Column, subQuery Expression) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s = (%s)", col.Sql(), subQuery.Sql()),
+		args: subQuery.Args(),
+	}
+}
+
+func colNotEqSub(col Column, subQuery Expression) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s != (%s)", col.Sql(), subQuery.Sql()),
+		args: subQuery.Args(),
+	}
+}
+
+func colGt(col Column, val any) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s > ?", col.Sql()),
+		args: []any{val},
+	}
+}
+
+func colGte(col Column, val any) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s >= ?", col.Sql()),
+		args: []any{val},
+	}
+}
+
+func colLt(col Column, val any) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s < ?", col.Sql()),
+		args: []any{val},
+	}
+}
+
+func colLte(col Column, val any) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s <= ?", col.Sql()),
+		args: []any{val},
+	}
+}
+
+func colIn(col Column, vals []any) Expression {
 	if len(vals) == 0 {
 		return &simpleExpr{sql: "1=0"}
 	}
-	args := make([]any, len(vals))
-	for i, v := range vals {
-		args[i] = v
-	}
 	return &simpleExpr{
-		sql:  fmt.Sprintf("%s IN %s", c, buildPlaceholders(len(vals))),
-		args: args,
+		sql:  fmt.Sprintf("%s IN %s", col.Sql(), buildPlaceholders(len(vals))),
+		args: vals,
 	}
 }
 
-func (c FloatColumn) InSub(subQuery Expression) Expression {
+func colInSub(col Column, subQuery Expression) Expression {
 	return &simpleExpr{
-		sql:  fmt.Sprintf("%s IN (%s)", c, subQuery.Sql()),
+		sql:  fmt.Sprintf("%s IN (%s)", col.Sql(), subQuery.Sql()),
 		args: subQuery.Args(),
 	}
 }
 
-func (c FloatColumn) NotIn(vals ...float64) Expression {
+func colNotIn(col Column, vals []any) Expression {
 	if len(vals) == 0 {
 		return &simpleExpr{sql: "1=1"}
 	}
-	args := make([]any, len(vals))
-	for i, v := range vals {
-		args[i] = v
-	}
 	return &simpleExpr{
-		sql:  fmt.Sprintf("%s NOT IN %s", c, buildPlaceholders(len(vals))),
-		args: args,
+		sql:  fmt.Sprintf("%s NOT IN %s", col.Sql(), buildPlaceholders(len(vals))),
+		args: vals,
 	}
 }
 
-func (c FloatColumn) NotInSub(subQuery Expression) Expression {
+func colNotInSub(col Column, subQuery Expression) Expression {
 	return &simpleExpr{
-		sql:  fmt.Sprintf("%s NOT IN (%s)", c, subQuery.Sql()),
+		sql:  fmt.Sprintf("%s NOT IN (%s)", col.Sql(), subQuery.Sql()),
 		args: subQuery.Args(),
 	}
 }
 
-func (c FloatColumn) Between(min, max float64) Expression {
+func colBetween(col Column, min, max any) Expression {
 	return &simpleExpr{
-		sql:  fmt.Sprintf("%s BETWEEN ? AND ?", c),
+		sql:  fmt.Sprintf("%s BETWEEN ? AND ?", col.Sql()),
 		args: []any{min, max},
 	}
+}
+
+func convertToAny[T any](vals ...T) []any {
+	result := make([]any, len(vals))
+	for i, v := range vals {
+		result[i] = v
+	}
+	return result
 }
