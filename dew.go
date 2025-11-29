@@ -241,6 +241,27 @@ func (s *Selector[T]) Exists(ctxs ...context.Context) (bool, error) {
 	return true, nil
 }
 
+func (s *Selector[T]) Count(ctxs ...context.Context) (int64, error) {
+	ctx := getCtx(ctxs)
+
+	clone := s.Clone()
+	clone.columns = []Column{Count()}
+	clone.limitCount = 0
+	clone.offsetCount = 0
+	clone.orderBys = nil
+
+	query := clone.buildQuery()
+
+	var count int64
+	err := s.db.QueryRowContext(ctx, query, clone.args...).Scan(&count)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
 func (s *Selector[T]) Scan(dest ...any) error {
 	return s.ScanCtx(context.Background(), dest...)
 }
