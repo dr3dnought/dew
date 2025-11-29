@@ -218,6 +218,29 @@ func (s *Selector[T]) First() (*T, error) {
 	return results[0], nil
 }
 
+func (s *Selector[T]) Exists(ctxs ...context.Context) (bool, error) {
+	ctx := getCtx(ctxs)
+
+	clone := s.Clone()
+	clone.columns = nil
+	clone.limitCount = 1
+
+	query := clone.buildQuery()
+	query = fmt.Sprintf("SELECT 1 %s", query[strings.Index(query, " FROM "):])
+
+	var exists int
+	err := s.db.QueryRowContext(ctx, query, clone.args...).Scan(&exists)
+
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
 func (s *Selector[T]) Scan(dest ...any) error {
 	return s.ScanCtx(context.Background(), dest...)
 }
