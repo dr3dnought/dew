@@ -27,9 +27,23 @@ func (c IntColumn) Gt(val int) Expression {
 	}
 }
 
+func (c IntColumn) Gte(val int) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s >= ?", c),
+		args: []any{val},
+	}
+}
+
 func (c IntColumn) Lt(val int) Expression {
 	return &simpleExpr{
 		sql:  fmt.Sprintf("%s < ?", c),
+		args: []any{val},
+	}
+}
+
+func (c IntColumn) Lte(val int) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s <= ?", c),
 		args: []any{val},
 	}
 }
@@ -106,5 +120,60 @@ func (c BoolColumn) IsFalse() Expression {
 	return &simpleExpr{
 		sql:  fmt.Sprintf("%s = ?", c),
 		args: []any{false},
+	}
+}
+
+type FloatColumn string
+
+func (c FloatColumn) Sql() string        { return string(c) }
+func (c FloatColumn) Args() []any        { return nil }
+func (c FloatColumn) ColumnName() string { return string(c) }
+
+func (c FloatColumn) Eq(val float64) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s = ?", c),
+		args: []any{val},
+	}
+}
+
+func (c FloatColumn) Gt(val float64) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s > ?", c),
+		args: []any{val},
+	}
+}
+
+func (c FloatColumn) Lt(val float64) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s < ?", c),
+		args: []any{val},
+	}
+}
+
+func (c FloatColumn) Gte(val float64) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s >= ?", c),
+		args: []any{val},
+	}
+}
+
+func (c FloatColumn) Lte(val float64) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s <= ?", c),
+		args: []any{val},
+	}
+}
+
+func (c FloatColumn) In(vals ...float64) Expression {
+	if len(vals) == 0 {
+		return &simpleExpr{sql: "1=0"}
+	}
+	args := make([]any, len(vals))
+	for i, v := range vals {
+		args[i] = v
+	}
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s IN %s", c, buildPlaceholders(len(vals))),
+		args: args,
 	}
 }
