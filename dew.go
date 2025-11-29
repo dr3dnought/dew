@@ -390,7 +390,13 @@ func (s *Selector[T]) buildQuery() string {
 		query += " GROUP BY " + strings.Join(groupSqls, ", ")
 	}
 
-	// TOOD: Add having
+	if len(s.havings) > 0 {
+		var havingSqls []string
+		for _, having := range s.havings {
+			havingSqls = append(havingSqls, having.Sql())
+		}
+		query += " HAVING " + strings.Join(havingSqls, " AND ")
+	}
 
 	if s.limitCount > 0 {
 		query += fmt.Sprintf(" LIMIT %d", s.limitCount)
