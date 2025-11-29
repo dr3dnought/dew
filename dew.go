@@ -103,6 +103,52 @@ func (s *Selector[T]) ToSql() (string, []any) {
 	return s.buildQuery(), s.args
 }
 
+func (s *Selector[T]) Clone() *Selector[T] {
+	clone := &Selector[T]{
+		db:          s.db,
+		tableName:   s.tableName,
+		limitCount:  s.limitCount,
+		offsetCount: s.offsetCount,
+	}
+
+	if s.columns != nil {
+		clone.columns = make([]Column, len(s.columns))
+		copy(clone.columns, s.columns)
+	}
+
+	if s.wheres != nil {
+		clone.wheres = make([]string, len(s.wheres))
+		copy(clone.wheres, s.wheres)
+	}
+
+	if s.args != nil {
+		clone.args = make([]any, len(s.args))
+		copy(clone.args, s.args)
+	}
+
+	if s.distinctColumns != nil {
+		clone.distinctColumns = make([]Column, len(s.distinctColumns))
+		copy(clone.distinctColumns, s.distinctColumns)
+	}
+
+	if s.orderBys != nil {
+		clone.orderBys = make([]Expression, len(s.orderBys))
+		copy(clone.orderBys, s.orderBys)
+	}
+
+	if s.groupBys != nil {
+		clone.groupBys = make([]Expression, len(s.groupBys))
+		copy(clone.groupBys, s.groupBys)
+	}
+
+	if s.havings != nil {
+		clone.havings = make([]Expression, len(s.havings))
+		copy(clone.havings, s.havings)
+	}
+
+	return clone
+}
+
 // * SELECT EXECUTION * //
 
 // One выполняет запрос с LIMIT 1 и возвращает первую строку как указатель на модель T.
