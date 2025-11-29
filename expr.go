@@ -105,28 +105,59 @@ func Desc(col any) Expression {
 type AGREGATE_FUNCTION_TYPE string
 
 const (
-	SUM AGREGATE_FUNCTION_TYPE = "SUM"
-	AVG AGREGATE_FUNCTION_TYPE = "AVG"
-	MAX AGREGATE_FUNCTION_TYPE = "MAX"
-	MIN AGREGATE_FUNCTION_TYPE = "MIN"
+	SUM   AGREGATE_FUNCTION_TYPE = "SUM"
+	AVG   AGREGATE_FUNCTION_TYPE = "AVG"
+	MAX   AGREGATE_FUNCTION_TYPE = "MAX"
+	MIN   AGREGATE_FUNCTION_TYPE = "MIN"
+	COUNT AGREGATE_FUNCTION_TYPE = "COUNT"
 )
 
-type aggExpr struct {
+type aggColumn struct {
 	fnType AGREGATE_FUNCTION_TYPE
 	col    string
+	alias  string
 }
 
-func (a *aggExpr) Sql() string { return fmt.Sprintf("%s(%s)", a.fnType, a.col) }
+func (a *aggColumn) Sql() string {
+	sql := fmt.Sprintf("%s(%s)", a.fnType, a.col)
+	if a.alias != "" {
+		return fmt.Sprintf("%s AS %s", sql, a.alias)
+	}
+	return sql
+}
 
-func (a *aggExpr) Args() []any { return nil }
+func (a *aggColumn) Args() []any { return nil }
 
-func Sum(col Expression) Expression { return &aggExpr{fnType: SUM, col: col.Sql()} }
+func (a *aggColumn) ColumnName() string {
+	if a.alias != "" {
+		return a.alias
+	}
+	return strings.ToLower(string(a.fnType))
+}
 
-func Avg(col Expression) Expression { return &aggExpr{fnType: AVG, col: col.Sql()} }
+func Sum(col Expression) Column {
+	return &aggColumn{fnType: SUM, col: col.Sql()}
+}
 
-func Max(col Expression) Expression { return &aggExpr{fnType: MAX, col: col.Sql()} }
+func Avg(col Expression) Column {
+	return &aggColumn{fnType: AVG, col: col.Sql()}
+}
 
-func Min(col Expression) Expression { return &aggExpr{fnType: MIN, col: col.Sql()} }
+func Max(col Expression) Column {
+	return &aggColumn{fnType: MAX, col: col.Sql()}
+}
+
+func Min(col Expression) Column {
+	return &aggColumn{fnType: MIN, col: col.Sql()}
+}
+
+func Count(columns ...Column) Column {
+	col := "*"
+	if len(columns) > 0 {
+		col = columns[0].Sql()
+	}
+	return &aggColumn{fnType: COUNT, col: col}
+}
 
 // * Alias Expr * //
 
