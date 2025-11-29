@@ -27,6 +27,8 @@ type Selector[T any] struct {
 	wheres    []string
 	args      []any
 
+	distinctColumns []Column
+
 	limitCount  int
 	offsetCount int
 	orderBys    []Expression
@@ -64,6 +66,11 @@ func (s *Selector[T]) Where(expr ...Expression) *Selector[T] {
 
 func (s *Selector[T]) Select(columns ...Column) *Selector[T] {
 	s.columns = columns
+	return s
+}
+
+func (s *Selector[T]) Distinct(columns ...Column) *Selector[T] {
+	s.distinctColumns = columns
 	return s
 }
 
@@ -301,7 +308,21 @@ func (s *Selector[T]) buildQuery() string {
 		selectClause = strings.Join(colSqls, ", ")
 	}
 
-	query := fmt.Sprintf("SELECT %s FROM %s", selectClause, s.tableName)
+	distinctClause := ""
+	if s.distinctColumns != nil {
+		if len(s.distinctColumns) == 0 {
+			distinctClause = "DISTINCT "
+		} else {
+			distinctColSqls := make([]string, len(s.distinctColumns))
+			for i, c := range s.distinctColumns {
+				distinctColSqls[i] = c.Sql()
+			}
+			selectClause = strings.Join(distinctColSqls, ", ")
+			distinctClause = "DISTINCT "
+		}
+	}
+
+	query := fmt.Sprintf("SELECT %s%s FROM %s", distinctClause, selectClause, s.tableName)
 
 	if len(s.wheres) > 0 {
 		query += " WHERE " + strings.Join(s.wheres, " AND ")
