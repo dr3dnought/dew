@@ -42,6 +42,16 @@ func From[T any](db *DB, schema Tabler) *Selector[T] {
 	}
 }
 
+// **** Implementations of the Expression interface **** //
+
+func (s *Selector[T]) Sql() string {
+	return "(" + s.buildQuery() + ")"
+}
+
+func (s *Selector[T]) Args() []any {
+	return s.args
+}
+
 // *** SELECTOR *** ///
 
 func (s *Selector[T]) Where(expr ...Expression) *Selector[T] {
