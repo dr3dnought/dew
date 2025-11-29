@@ -65,6 +65,14 @@ func (c IntColumn) Between(min, max int) Expression {
 	return colBetween(c, min, max)
 }
 
+func (c IntColumn) IsNull() Expression {
+	return colIsNull(c)
+}
+
+func (c IntColumn) IsNotNull() Expression {
+	return colIsNotNull(c)
+}
+
 type StringColumn string
 
 func (c StringColumn) Sql() string        { return string(c) }
@@ -113,6 +121,14 @@ func (c StringColumn) NotInSub(subQuery Expression) Expression {
 	return colNotInSub(c, subQuery)
 }
 
+func (c StringColumn) IsNull() Expression {
+	return colIsNull(c)
+}
+
+func (c StringColumn) IsNotNull() Expression {
+	return colIsNotNull(c)
+}
+
 type BoolColumn string
 
 func (c BoolColumn) Sql() string        { return string(c) }
@@ -133,6 +149,14 @@ func (c BoolColumn) IsFalse() Expression {
 
 func (c BoolColumn) NotEq(val bool) Expression {
 	return colNotEq(c, val)
+}
+
+func (c BoolColumn) IsNull() Expression {
+	return colIsNull(c)
+}
+
+func (c BoolColumn) IsNotNull() Expression {
+	return colIsNotNull(c)
 }
 
 type FloatColumn string
@@ -191,6 +215,14 @@ func (c FloatColumn) NotInSub(subQuery Expression) Expression {
 
 func (c FloatColumn) Between(min, max float64) Expression {
 	return colBetween(c, min, max)
+}
+
+func (c FloatColumn) IsNull() Expression {
+	return colIsNull(c)
+}
+
+func (c FloatColumn) IsNotNull() Expression {
+	return colIsNotNull(c)
 }
 
 func colEq(col Column, val any) Expression {
@@ -287,6 +319,20 @@ func colBetween(col Column, min, max any) Expression {
 	return &simpleExpr{
 		sql:  fmt.Sprintf("%s BETWEEN ? AND ?", col.Sql()),
 		args: []any{min, max},
+	}
+}
+
+func colIsNull(col Column) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s IS NULL", col.Sql()),
+		args: nil,
+	}
+}
+
+func colIsNotNull(col Column) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s IS NOT NULL", col.Sql()),
+		args: nil,
 	}
 }
 
