@@ -135,6 +135,8 @@ func (a *aggColumn) ColumnName() string {
 	return strings.ToLower(string(a.fnType))
 }
 
+func (a *aggColumn) TableName() string { return "" }
+
 func Sum(col Expression) Column {
 	return &aggColumn{fnType: SUM, col: col.Sql()}
 }
@@ -171,6 +173,8 @@ func (a *aliasExpr) Sql() string { return fmt.Sprintf("%s AS %s", a.expr.Sql(), 
 func (a *aliasExpr) Args() []any { return a.expr.Args() }
 
 func (a *aliasExpr) ColumnName() string { return a.alias }
+
+func (a *aliasExpr) TableName() string { return "" }
 
 func As(exp Expression, alias string) Column { return &aliasExpr{expr: exp, alias: alias} }
 

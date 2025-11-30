@@ -5,13 +5,18 @@ import "fmt"
 type Column interface {
 	Expression
 	ColumnName() string
+	TableName() string
 }
 
-type IntColumn string
+type IntColumn struct {
+	name  string
+	table string
+}
 
-func (c IntColumn) Sql() string        { return string(c) }
+func (c IntColumn) Sql() string        { return c.name }
 func (c IntColumn) Args() []any        { return nil }
-func (c IntColumn) ColumnName() string { return string(c) }
+func (c IntColumn) ColumnName() string { return c.name }
+func (c IntColumn) TableName() string  { return c.table }
 
 func (c IntColumn) Eq(val int) Expression {
 	return colEq(c, val)
@@ -31,7 +36,7 @@ func (c IntColumn) NotEqSub(subQuery Expression) Expression {
 
 func (c IntColumn) Gt(val int) Expression {
 	return colGt(c, val)
-	}
+}
 
 func (c IntColumn) Gte(val int) Expression {
 	return colGte(c, val)
@@ -39,7 +44,7 @@ func (c IntColumn) Gte(val int) Expression {
 
 func (c IntColumn) Lt(val int) Expression {
 	return colLt(c, val)
-	}
+}
 
 func (c IntColumn) Lte(val int) Expression {
 	return colLte(c, val)
@@ -73,11 +78,15 @@ func (c IntColumn) IsNotNull() Expression {
 	return colIsNotNull(c)
 }
 
-type StringColumn string
+type StringColumn struct {
+	name  string
+	table string
+}
 
-func (c StringColumn) Sql() string        { return string(c) }
+func (c StringColumn) Sql() string        { return c.name }
 func (c StringColumn) Args() []any        { return nil }
-func (c StringColumn) ColumnName() string { return string(c) }
+func (c StringColumn) ColumnName() string { return c.name }
+func (c StringColumn) TableName() string  { return c.table }
 
 func (c StringColumn) Eq(val string) Expression {
 	return colEq(c, val)
@@ -129,11 +138,15 @@ func (c StringColumn) IsNotNull() Expression {
 	return colIsNotNull(c)
 }
 
-type BoolColumn string
+type BoolColumn struct {
+	name  string
+	table string
+}
 
-func (c BoolColumn) Sql() string        { return string(c) }
+func (c BoolColumn) Sql() string        { return c.name }
 func (c BoolColumn) Args() []any        { return nil }
-func (c BoolColumn) ColumnName() string { return string(c) }
+func (c BoolColumn) ColumnName() string { return c.name }
+func (c BoolColumn) TableName() string  { return c.table }
 
 func (c BoolColumn) Eq(val bool) Expression {
 	return colEq(c, val)
@@ -159,11 +172,15 @@ func (c BoolColumn) IsNotNull() Expression {
 	return colIsNotNull(c)
 }
 
-type FloatColumn string
+type FloatColumn struct {
+	name  string
+	table string
+}
 
-func (c FloatColumn) Sql() string        { return string(c) }
+func (c FloatColumn) Sql() string        { return c.name }
 func (c FloatColumn) Args() []any        { return nil }
-func (c FloatColumn) ColumnName() string { return string(c) }
+func (c FloatColumn) ColumnName() string { return c.name }
+func (c FloatColumn) TableName() string  { return c.table }
 
 func (c FloatColumn) Eq(val float64) Expression {
 	return colEq(c, val)
