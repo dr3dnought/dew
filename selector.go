@@ -63,8 +63,11 @@ func (s *Selector[T]) Args() []any {
 
 func (s *Selector[T]) Where(expr ...Expression) *Selector[T] {
 	for _, exp := range expr {
-		s.wheres = append(s.wheres, exp.Sql())
-		s.args = append(s.args, exp.Args()...)
+		sql := exp.Sql()
+		if sql != "" {
+			s.wheres = append(s.wheres, sql)
+			s.args = append(s.args, exp.Args()...)
+		}
 	}
 	return s
 }
