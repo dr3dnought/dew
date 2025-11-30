@@ -8,16 +8,19 @@ import (
 	"strings"
 )
 
-type DB struct {
-	*sql.DB
-}
+type joinType string
 
-func Open(driverName, dataSourceName string) (*DB, error) {
-	db, err := sql.Open(driverName, dataSourceName)
-	if err != nil {
-		return nil, err
-	}
-	return &DB{db}, nil
+const (
+	InnerJoinType joinType = "INNER JOIN"
+	LeftJoinType  joinType = "LEFT JOIN"
+	RightJoinType joinType = "RIGHT JOIN"
+)
+
+type joinInfo struct {
+	joinType  joinType
+	tableName string
+	onLeft    Column
+	onRight   Column
 }
 
 type Selector[T any] struct {
@@ -28,6 +31,8 @@ type Selector[T any] struct {
 	args      []any
 
 	distinctColumns []Column
+
+	joins []joinInfo
 
 	limitCount  int
 	offsetCount int
@@ -99,6 +104,36 @@ func (s *Selector[T]) Having(columns ...Expression) *Selector[T] {
 	return s
 }
 
+func (s *Selector[T]) InnerJoin(schema Tabler, onLeft Column, onRight Column) *Selector[T] {
+	s.joins = append(s.joins, joinInfo{
+		joinType:  InnerJoinType,
+		tableName: schema.TableName(),
+		onLeft:    onLeft,
+		onRight:   onRight,
+	})
+	return s
+}
+
+func (s *Selector[T]) LeftJoin(schema Tabler, onLeft Column, onRight Column) *Selector[T] {
+	s.joins = append(s.joins, joinInfo{
+		joinType:  LeftJoinType,
+		tableName: schema.TableName(),
+		onLeft:    onLeft,
+		onRight:   onRight,
+	})
+	return s
+}
+
+func (s *Selector[T]) RightJoin(schema Tabler, onLeft Column, onRight Column) *Selector[T] {
+	s.joins = append(s.joins, joinInfo{
+		joinType:  RightJoinType,
+		tableName: schema.TableName(),
+		onLeft:    onLeft,
+		onRight:   onRight,
+	})
+	return s
+}
+
 func (s *Selector[T]) ToSql() (string, []any) {
 	return s.buildQuery(), s.args
 }
@@ -144,6 +179,11 @@ func (s *Selector[T]) Clone() *Selector[T] {
 	if s.havings != nil {
 		clone.havings = make([]Expression, len(s.havings))
 		copy(clone.havings, s.havings)
+	}
+
+	if s.joins != nil {
+		clone.joins = make([]joinInfo, len(s.joins))
+		copy(clone.joins, s.joins)
 	}
 
 	return clone
@@ -413,6 +453,15 @@ func (s *Selector[T]) buildQuery() string {
 	}
 
 	query := fmt.Sprintf("SELECT %s%s FROM %s", distinctClause, selectClause, s.tableName)
+
+	for _, join := range s.joins {
+		query += fmt.Sprintf(" %s %s ON %s = %s",
+			join.joinType,
+			join.tableName,
+			join.onLeft.Sql(),
+			join.onRight.Sql(),
+		)
+	}
 
 	if len(s.wheres) > 0 {
 		query += " WHERE " + strings.Join(s.wheres, " AND ")

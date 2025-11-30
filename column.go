@@ -31,7 +31,7 @@ func (c IntColumn) NotEqSub(subQuery Expression) Expression {
 
 func (c IntColumn) Gt(val int) Expression {
 	return colGt(c, val)
-}
+	}
 
 func (c IntColumn) Gte(val int) Expression {
 	return colGte(c, val)
@@ -39,7 +39,7 @@ func (c IntColumn) Gte(val int) Expression {
 
 func (c IntColumn) Lt(val int) Expression {
 	return colLt(c, val)
-}
+	}
 
 func (c IntColumn) Lte(val int) Expression {
 	return colLte(c, val)
