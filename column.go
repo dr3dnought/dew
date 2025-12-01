@@ -10,13 +10,18 @@ type Column interface {
 
 type IntColumn struct {
 	name  string
-	table string
+	table *string
 }
 
 func (c IntColumn) Sql() string        { return c.name }
 func (c IntColumn) Args() []any        { return nil }
 func (c IntColumn) ColumnName() string { return c.name }
-func (c IntColumn) TableName() string  { return c.table }
+func (c IntColumn) TableName() string {
+	if c.table != nil {
+		return *c.table
+	}
+	return ""
+}
 
 func (c IntColumn) Eq(val int) Expression {
 	return colEq(c, val)
@@ -80,13 +85,18 @@ func (c IntColumn) IsNotNull() Expression {
 
 type StringColumn struct {
 	name  string
-	table string
+	table *string
 }
 
 func (c StringColumn) Sql() string        { return c.name }
 func (c StringColumn) Args() []any        { return nil }
 func (c StringColumn) ColumnName() string { return c.name }
-func (c StringColumn) TableName() string  { return c.table }
+func (c StringColumn) TableName() string {
+	if c.table != nil {
+		return *c.table
+	}
+	return ""
+}
 
 func (c StringColumn) Eq(val string) Expression {
 	return colEq(c, val)
@@ -140,13 +150,18 @@ func (c StringColumn) IsNotNull() Expression {
 
 type BoolColumn struct {
 	name  string
-	table string
+	table *string
 }
 
 func (c BoolColumn) Sql() string        { return c.name }
 func (c BoolColumn) Args() []any        { return nil }
 func (c BoolColumn) ColumnName() string { return c.name }
-func (c BoolColumn) TableName() string  { return c.table }
+func (c BoolColumn) TableName() string {
+	if c.table != nil {
+		return *c.table
+	}
+	return ""
+}
 
 func (c BoolColumn) Eq(val bool) Expression {
 	return colEq(c, val)
@@ -174,13 +189,18 @@ func (c BoolColumn) IsNotNull() Expression {
 
 type FloatColumn struct {
 	name  string
-	table string
+	table *string
 }
 
 func (c FloatColumn) Sql() string        { return c.name }
 func (c FloatColumn) Args() []any        { return nil }
 func (c FloatColumn) ColumnName() string { return c.name }
-func (c FloatColumn) TableName() string  { return c.table }
+func (c FloatColumn) TableName() string {
+	if c.table != nil {
+		return *c.table
+	}
+	return ""
+}
 
 func (c FloatColumn) Eq(val float64) Expression {
 	return colEq(c, val)
