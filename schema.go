@@ -1,5 +1,9 @@
 package dew
 
+type Tabler interface {
+	TableName() string
+}
+
 type Table[T any] struct {
 	name string
 }
@@ -19,6 +23,35 @@ func (t Table[T]) From(db *DB) *Selector[T] {
 	}
 }
 
-type Tabler interface {
-	TableName() string
+func (t Table[T]) IntColumn(name string) IntColumn {
+	return IntColumn{
+		name:  name,
+		table: &t.name,
+	}
+}
+
+func (t Table[T]) StringColumn(name string) StringColumn {
+	return StringColumn{
+		name:  name,
+		table: &t.name,
+	}
+}
+
+func (t Table[T]) BoolColumn(name string) BoolColumn {
+	return BoolColumn{
+		name:  name,
+		table: &t.name,
+	}
+}
+
+func (t Table[T]) FloatColumn(name string) FloatColumn {
+	return FloatColumn{
+		name:  name,
+		table: &t.name,
+	}
+}
+
+func DefineSchema[T any, S any](tableName string, builder func(Table[T]) S) S {
+	table := NewTable[T](tableName)
+	return builder(table)
 }

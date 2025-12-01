@@ -344,6 +344,34 @@ func (s *Selector[T]) ScanCtx(ctx context.Context, dest ...any) error {
 	return s.scanIntoOne(rows, firstDest)
 }
 
+func (s *Selector[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...context.Context) ([]*T, error) {
+	ctx := getCtx(ctxs)
+
+	query := s.buildQuery()
+
+	rows, err := s.db.QueryContext(ctx, query, s.args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []*T
+
+	for rows.Next() {
+		item, err := scanner(rows)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
 func (s *Selector[T]) scanIntoSlice(rows *sql.Rows, sliceVal reflect.Value) error {
 	elemType := sliceVal.Type().Elem()
 
