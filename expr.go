@@ -87,15 +87,27 @@ func (s *sortExpr) Args() []any {
 }
 
 func Asc(col any) Expression {
+	var colSql string
+	if expr, ok := col.(Expression); ok {
+		colSql = expr.Sql()
+	} else {
+		colSql = fmt.Sprintf("%v", col)
+	}
 	return &sortExpr{
-		column: fmt.Sprintf("%v", col),
+		column: colSql,
 		dir:    "ASC",
 	}
 }
 
 func Desc(col any) Expression {
+	var colSql string
+	if expr, ok := col.(Expression); ok {
+		colSql = expr.Sql()
+	} else {
+		colSql = fmt.Sprintf("%v", col)
+	}
 	return &sortExpr{
-		column: fmt.Sprintf("%v", col),
+		column: colSql,
 		dir:    "DESC",
 	}
 }
@@ -137,6 +149,13 @@ func (a *aggColumn) ColumnName() string {
 
 func (a *aggColumn) TableName() string { return "" }
 
+func (a *aggColumn) Alias() *string {
+	if a.alias != "" {
+		return &a.alias
+	}
+	return nil
+}
+
 func Sum(col Expression) Column {
 	return &aggColumn{fnType: SUM, col: col.Sql()}
 }
@@ -175,6 +194,8 @@ func (a *aliasExpr) Args() []any { return a.expr.Args() }
 func (a *aliasExpr) ColumnName() string { return a.alias }
 
 func (a *aliasExpr) TableName() string { return "" }
+
+func (a *aliasExpr) Alias() *string { return &a.alias }
 
 func As(exp Expression, alias string) Column { return &aliasExpr{expr: exp, alias: alias} }
 

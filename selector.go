@@ -193,10 +193,6 @@ func (s *Selector[T]) Clone() *Selector[T] {
 }
 
 // * SELECT EXECUTION * //
-
-// One выполняет запрос с LIMIT 1 и возвращает первую строку как указатель на модель T.
-// Возвращает ErrNotFound если строк нет.
-// Пример: user, err := dew.From(db, UserSchema).Where(...).One() вернет *User
 func (s *Selector[T]) One(ctxs ...context.Context) (*T, error) {
 	ctx := getCtx(ctxs)
 
@@ -464,7 +460,15 @@ func (s *Selector[T]) buildQuery() string {
 	if len(s.columns) > 0 {
 		colSqls := make([]string, len(s.columns))
 		for i, c := range s.columns {
-			colSqls[i] = c.Sql()
+			if alias := c.Alias(); alias != nil {
+				original := c.ColumnName()
+				if table := c.TableName(); table != "" {
+					original = fmt.Sprintf("%s.%s", table, original)
+				}
+				colSqls[i] = fmt.Sprintf("%s AS %s", original, *alias)
+			} else {
+				colSqls[i] = c.Sql()
+			}
 		}
 		selectClause = strings.Join(colSqls, ", ")
 	}
@@ -476,7 +480,15 @@ func (s *Selector[T]) buildQuery() string {
 		} else {
 			distinctColSqls := make([]string, len(s.distinctColumns))
 			for i, c := range s.distinctColumns {
-				distinctColSqls[i] = c.Sql()
+				if alias := c.Alias(); alias != nil {
+					original := c.ColumnName()
+					if table := c.TableName(); table != "" {
+						original = fmt.Sprintf("%s.%s", table, original)
+					}
+					distinctColSqls[i] = fmt.Sprintf("%s AS %s", original, *alias)
+				} else {
+					distinctColSqls[i] = c.Sql()
+				}
 			}
 			selectClause = strings.Join(distinctColSqls, ", ")
 			distinctClause = "DISTINCT "
@@ -552,6 +564,9 @@ func resolveScanIndices(modelType reflect.Type, columns []Column) ([]int, error)
 	indices := make([]int, len(columns))
 	for i, col := range columns {
 		colName := col.ColumnName()
+		if alias := col.Alias(); alias != nil {
+			colName = *alias
+		}
 		idx, ok := fieldMap[strings.ToLower(colName)]
 		if !ok {
 			return nil, fmt.Errorf("dew: struct field for column '%s' not found", colName)
@@ -566,7 +581,7 @@ func prepareScanArgs(val reflect.Value, indices []int) []any {
 	if indices == nil {
 		num := val.NumField()
 		args := make([]any, num)
-		for i := 0; i < num; i++ {
+		for i := range num {
 			args[i] = val.Field(i).Addr().Interface()
 		}
 		return args

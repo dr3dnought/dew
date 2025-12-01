@@ -1,3 +1,8 @@
+/*
+TODO:
+
+	Check if alias pointer is nil or not in As method
+*/
 package dew
 
 import "fmt"
@@ -6,14 +11,26 @@ type Column interface {
 	Expression
 	ColumnName() string
 	TableName() string
+	Alias() *string
 }
 
 type IntColumn struct {
 	name  string
 	table *string
+	alias *string
 }
 
-func (c IntColumn) Sql() string        { return c.name }
+func (c IntColumn) Sql() string {
+	if c.alias != nil {
+		return *c.alias
+	}
+
+	if c.table != nil && *c.table != "" {
+		return fmt.Sprintf("%s.%s", *c.table, c.name)
+	}
+	return c.name
+}
+
 func (c IntColumn) Args() []any        { return nil }
 func (c IntColumn) ColumnName() string { return c.name }
 func (c IntColumn) TableName() string {
@@ -21,6 +38,16 @@ func (c IntColumn) TableName() string {
 		return *c.table
 	}
 	return ""
+}
+
+func (c IntColumn) Alias() *string { return c.alias }
+
+func (c IntColumn) As(alias string) IntColumn {
+	return IntColumn{
+		name:  c.name,
+		table: c.table,
+		alias: &alias,
+	}
 }
 
 func (c IntColumn) Eq(val int) Expression {
@@ -86,9 +113,20 @@ func (c IntColumn) IsNotNull() Expression {
 type StringColumn struct {
 	name  string
 	table *string
+	alias *string
 }
 
-func (c StringColumn) Sql() string        { return c.name }
+func (c StringColumn) Sql() string {
+	if c.alias != nil {
+		return *c.alias
+	}
+
+	if c.table != nil && *c.table != "" {
+		return fmt.Sprintf("%s.%s", *c.table, c.name)
+	}
+	return c.name
+}
+
 func (c StringColumn) Args() []any        { return nil }
 func (c StringColumn) ColumnName() string { return c.name }
 func (c StringColumn) TableName() string {
@@ -96,6 +134,16 @@ func (c StringColumn) TableName() string {
 		return *c.table
 	}
 	return ""
+}
+
+func (c StringColumn) Alias() *string { return c.alias }
+
+func (c StringColumn) As(alias string) StringColumn {
+	return StringColumn{
+		name:  c.name,
+		table: c.table,
+		alias: &alias,
+	}
 }
 
 func (c StringColumn) Eq(val string) Expression {
@@ -112,14 +160,14 @@ func (c StringColumn) NotEq(val string) Expression {
 
 func (c StringColumn) Like(val string) Expression {
 	return &simpleExpr{
-		sql:  fmt.Sprintf("%s LIKE ?", c),
+		sql:  fmt.Sprintf("%s LIKE ?", c.Sql()),
 		args: []any{val},
 	}
 }
 
 func (c StringColumn) NotLike(val string) Expression {
 	return &simpleExpr{
-		sql:  fmt.Sprintf("%s NOT LIKE ?", c),
+		sql:  fmt.Sprintf("%s NOT LIKE ?", c.Sql()),
 		args: []any{val},
 	}
 }
@@ -151,9 +199,20 @@ func (c StringColumn) IsNotNull() Expression {
 type BoolColumn struct {
 	name  string
 	table *string
+	alias *string
 }
 
-func (c BoolColumn) Sql() string        { return c.name }
+func (c BoolColumn) Sql() string {
+	if c.alias != nil {
+		return *c.alias
+	}
+
+	if c.table != nil && *c.table != "" {
+		return fmt.Sprintf("%s.%s", *c.table, c.name)
+	}
+	return c.name
+}
+
 func (c BoolColumn) Args() []any        { return nil }
 func (c BoolColumn) ColumnName() string { return c.name }
 func (c BoolColumn) TableName() string {
@@ -161,6 +220,16 @@ func (c BoolColumn) TableName() string {
 		return *c.table
 	}
 	return ""
+}
+
+func (c BoolColumn) Alias() *string { return c.alias }
+
+func (c BoolColumn) As(alias string) BoolColumn {
+	return BoolColumn{
+		name:  c.name,
+		table: c.table,
+		alias: &alias,
+	}
 }
 
 func (c BoolColumn) Eq(val bool) Expression {
@@ -190,9 +259,20 @@ func (c BoolColumn) IsNotNull() Expression {
 type FloatColumn struct {
 	name  string
 	table *string
+	alias *string
 }
 
-func (c FloatColumn) Sql() string        { return c.name }
+func (c FloatColumn) Sql() string {
+	if c.alias != nil {
+		return *c.alias
+	}
+
+	if c.table != nil && *c.table != "" {
+		return fmt.Sprintf("%s.%s", *c.table, c.name)
+	}
+	return c.name
+}
+
 func (c FloatColumn) Args() []any        { return nil }
 func (c FloatColumn) ColumnName() string { return c.name }
 func (c FloatColumn) TableName() string {
@@ -200,6 +280,16 @@ func (c FloatColumn) TableName() string {
 		return *c.table
 	}
 	return ""
+}
+
+func (c FloatColumn) Alias() *string { return c.alias }
+
+func (c FloatColumn) As(alias string) FloatColumn {
+	return FloatColumn{
+		name:  c.name,
+		table: c.table,
+		alias: &alias,
+	}
 }
 
 func (c FloatColumn) Eq(val float64) Expression {
