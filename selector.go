@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"unicode"
 )
 
 type joinType string
@@ -385,6 +386,7 @@ func (s *Selector[T]) scanIntoSlice(rows *sql.Rows, sliceVal reflect.Value) erro
 
 		targetIndices = make([]int, numColumns)
 		for i, colName := range columns {
+
 			idx, ok := fieldMap[strings.ToLower(colName)]
 			if !ok {
 				return fmt.Errorf("dew: struct field for column '%s' not found", colName)
@@ -436,6 +438,8 @@ func (s *Selector[T]) scanIntoOne(rows *sql.Rows, dest any) error {
 
 		scanArgs := make([]any, len(columns))
 		for i, colName := range columns {
+			// rows.Columns() уже возвращает алиасы из SQL запроса
+			// Просто используем их напрямую для маппинга
 			idx, ok := fieldMap[strings.ToLower(colName)]
 			if !ok {
 				return fmt.Errorf("dew: struct field for column '%s' not found", colName)
@@ -460,14 +464,19 @@ func (s *Selector[T]) buildQuery() string {
 	if len(s.columns) > 0 {
 		colSqls := make([]string, len(s.columns))
 		for i, c := range s.columns {
-			if alias := c.Alias(); alias != nil {
+			sqlStr := c.Sql()
+			// Если SQL уже содержит " AS " (регистронезависимо), значит алиас уже включен
+			if strings.Contains(strings.ToUpper(sqlStr), " AS ") {
+				colSqls[i] = sqlStr
+			} else if alias := c.Alias(); alias != nil {
+				// Генерируем "original AS alias" для обычных колонок
 				original := c.ColumnName()
 				if table := c.TableName(); table != "" {
 					original = fmt.Sprintf("%s.%s", table, original)
 				}
 				colSqls[i] = fmt.Sprintf("%s AS %s", original, *alias)
 			} else {
-				colSqls[i] = c.Sql()
+				colSqls[i] = sqlStr
 			}
 		}
 		selectClause = strings.Join(colSqls, ", ")
@@ -480,14 +489,19 @@ func (s *Selector[T]) buildQuery() string {
 		} else {
 			distinctColSqls := make([]string, len(s.distinctColumns))
 			for i, c := range s.distinctColumns {
-				if alias := c.Alias(); alias != nil {
+				sqlStr := c.Sql()
+				// Если SQL уже содержит " AS ", значит алиас уже включен
+				if strings.Contains(sqlStr, " AS ") {
+					distinctColSqls[i] = sqlStr
+				} else if alias := c.Alias(); alias != nil {
+					// Генерируем "original AS alias" для обычных колонок
 					original := c.ColumnName()
 					if table := c.TableName(); table != "" {
 						original = fmt.Sprintf("%s.%s", table, original)
 					}
 					distinctColSqls[i] = fmt.Sprintf("%s AS %s", original, *alias)
 				} else {
-					distinctColSqls[i] = c.Sql()
+					distinctColSqls[i] = sqlStr
 				}
 			}
 			selectClause = strings.Join(distinctColSqls, ", ")
@@ -510,18 +524,27 @@ func (s *Selector[T]) buildQuery() string {
 		query += " WHERE " + strings.Join(s.wheres, " AND ")
 	}
 
-	if len(s.orderBys) > 0 {
-		var orderSqls []string
-		for _, order := range s.orderBys {
-			orderSqls = append(orderSqls, order.Sql())
-		}
-		query += " ORDER BY " + strings.Join(orderSqls, ", ")
-	}
-
 	if len(s.groupBys) > 0 {
 		var groupSqls []string
-		for _, order := range s.groupBys {
-			groupSqls = append(groupSqls, order.Sql())
+		for _, expr := range s.groupBys {
+			sqlStr := expr.Sql()
+			// Если это Column с алиасом - используем только алиас
+			if col, ok := expr.(Column); ok {
+				if alias := col.Alias(); alias != nil {
+					sqlStr = *alias
+				} else {
+					// Убираем " AS ..." если есть
+					if idx := strings.Index(sqlStr, " AS "); idx != -1 {
+						sqlStr = sqlStr[:idx]
+					}
+				}
+			} else {
+				// Для других Expression убираем " AS ..." если есть
+				if idx := strings.Index(sqlStr, " AS "); idx != -1 {
+					sqlStr = sqlStr[:idx]
+				}
+			}
+			groupSqls = append(groupSqls, sqlStr)
 		}
 		query += " GROUP BY " + strings.Join(groupSqls, ", ")
 	}
@@ -532,6 +555,14 @@ func (s *Selector[T]) buildQuery() string {
 			havingSqls = append(havingSqls, having.Sql())
 		}
 		query += " HAVING " + strings.Join(havingSqls, " AND ")
+	}
+
+	if len(s.orderBys) > 0 {
+		var orderSqls []string
+		for _, order := range s.orderBys {
+			orderSqls = append(orderSqls, order.Sql())
+		}
+		query += " ORDER BY " + strings.Join(orderSqls, ", ")
 	}
 
 	if s.limitCount > 0 {
@@ -547,7 +578,10 @@ func (s *Selector[T]) buildQuery() string {
 func buildFieldMap(typ reflect.Type) map[string]int {
 	fieldMap := make(map[string]int, typ.NumField())
 	for i := 0; i < typ.NumField(); i++ {
-		fieldMap[strings.ToLower(typ.Field(i).Name)] = i
+		fieldName := typ.Field(i).Name
+		snakeName := toSnakeCase(fieldName)
+		key := strings.ToLower(snakeName)
+		fieldMap[key] = i
 	}
 	return fieldMap
 }
@@ -567,7 +601,8 @@ func resolveScanIndices(modelType reflect.Type, columns []Column) ([]int, error)
 		if alias := col.Alias(); alias != nil {
 			colName = *alias
 		}
-		idx, ok := fieldMap[strings.ToLower(colName)]
+		key := strings.ToLower(colName)
+		idx, ok := fieldMap[key]
 		if !ok {
 			return nil, fmt.Errorf("dew: struct field for column '%s' not found", colName)
 		}
@@ -599,4 +634,26 @@ func getCtx(ctxs []context.Context) context.Context {
 		return ctxs[0]
 	}
 	return context.Background()
+}
+
+func toSnakeCase(s string) string {
+	var b strings.Builder
+	b.Grow(len(s) + 5)
+
+	var lastUpper bool
+
+	for i, r := range s {
+		if unicode.IsUpper(r) {
+			if i > 0 && !lastUpper {
+				b.WriteByte('_')
+			}
+
+			b.WriteRune(unicode.ToLower(r))
+			lastUpper = true
+		} else {
+			b.WriteRune(r)
+			lastUpper = false
+		}
+	}
+	return b.String()
 }

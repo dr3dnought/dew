@@ -88,7 +88,18 @@ func (s *sortExpr) Args() []any {
 
 func Asc(col any) Expression {
 	var colSql string
-	if expr, ok := col.(Expression); ok {
+	if colExpr, ok := col.(Column); ok {
+		if alias := colExpr.Alias(); alias != nil {
+			colSql = *alias
+		} else {
+			sqlStr := colExpr.Sql()
+			if idx := strings.Index(sqlStr, " AS "); idx != -1 {
+				colSql = sqlStr[:idx]
+			} else {
+				colSql = sqlStr
+			}
+		}
+	} else if expr, ok := col.(Expression); ok {
 		colSql = expr.Sql()
 	} else {
 		colSql = fmt.Sprintf("%v", col)
@@ -101,7 +112,18 @@ func Asc(col any) Expression {
 
 func Desc(col any) Expression {
 	var colSql string
-	if expr, ok := col.(Expression); ok {
+	if colExpr, ok := col.(Column); ok {
+		if alias := colExpr.Alias(); alias != nil {
+			colSql = *alias
+		} else {
+			sqlStr := colExpr.Sql()
+			if idx := strings.Index(sqlStr, " AS "); idx != -1 {
+				colSql = sqlStr[:idx]
+			} else {
+				colSql = sqlStr
+			}
+		}
+	} else if expr, ok := col.(Expression); ok {
 		colSql = expr.Sql()
 	} else {
 		colSql = fmt.Sprintf("%v", col)
