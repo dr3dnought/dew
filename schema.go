@@ -23,6 +23,13 @@ func (t Table[T]) From(db *DB) *Selector[T] {
 	}
 }
 
+func (t Table[T]) Insert(db *DB) *Insertor[T] {
+	return &Insertor[T]{
+		db:    db,
+		table: t,
+	}
+}
+
 func (t Table[T]) IntColumn(name string) IntColumn {
 	return IntColumn{
 		name:  name,
