@@ -7,12 +7,21 @@ import (
 	"strings"
 )
 
+type ConflictActionType string
+
+const (
+	ConflictActionTypeNothing ConflictActionType = "NOTHING"
+	ConflictActionTypeUpdate  ConflictActionType = "UPDATE"
+)
+
 type Insertor[T any] struct {
 	db      *DB
 	table   Tabler
 	columns []Column
 	values  [][]any
 	models  []*T
+
+	returningCols []Column
 }
 
 func Insert[T any](db *DB, table Tabler) *Insertor[T] {
@@ -32,14 +41,22 @@ func (i *Insertor[T]) Values(vals ...any) *Insertor[T] {
 	return i
 }
 
-func (i *Insertor[T]) Model(model *T) *Insertor[T] {
-	i.models = append(i.models, model)
-	return i
-}
-
 func (i *Insertor[T]) Models(models ...*T) *Insertor[T] {
 	i.models = append(i.models, models...)
 	return i
+}
+
+func (i *Insertor[T]) Returning(cols ...Column) *Insertor[T] {
+	i.returningCols = append(i.returningCols, cols...)
+	return i
+}
+
+func (i *Insertor[T]) OnConflict(cols ...Column) *ConfilctInsertor[T] {
+	conflictInsertor := newConfilctInsertor(i)
+	for _, c := range cols {
+		conflictInsertor.conflictTargets = append(conflictInsertor.conflictTargets, c.ColumnName())
+	}
+	return conflictInsertor
 }
 
 func (i *Insertor[T]) buildFromModels() (string, []any, error) {
@@ -190,5 +207,124 @@ func (i *Insertor[T]) Exec(ctxs ...context.Context) error {
 }
 
 func (i *Insertor[T]) ToSql() (string, []any, error) {
+	return i.buildInsertQuery()
+}
+
+type ConfilctInsertor[T any] struct {
+	*Insertor[T]
+
+	conflictTargets []string
+	conflictAction  ConflictActionType
+	conflictSets    map[string]any
+}
+
+func newConfilctInsertor[T any](insertor *Insertor[T]) *ConfilctInsertor[T] {
+	return &ConfilctInsertor[T]{
+		Insertor:     insertor,
+		conflictSets: make(map[string]any),
+	}
+}
+
+func (i *ConfilctInsertor[T]) DoNothing() *ConfilctInsertor[T] {
+	i.conflictAction = "NOTHING"
+	return i
+}
+
+func (i *ConfilctInsertor[T]) SetUpdate(col Column, val any) *ConfilctInsertor[T] {
+	if i.conflictSets == nil {
+		i.conflictSets = make(map[string]any)
+	}
+	i.conflictAction = "UPDATE"
+	i.conflictSets[col.ColumnName()] = val
+	return i
+}
+
+func (i *ConfilctInsertor[T]) buildInsertQuery() (string, []any, error) {
+	var query string
+	var args []any
+	var err error
+
+	hasModels := len(i.models) > 0
+	hasValues := len(i.values) > 0
+
+	if hasModels && hasValues {
+		return "", nil, fmt.Errorf("dew: cannot use both Models() and Values() in the same insert statement")
+	}
+
+	if hasModels {
+		if len(i.columns) > 0 {
+			return "", nil, fmt.Errorf("dew: do not use Columns() with Models(), columns are inferred from struct fields")
+		}
+		query, args, err = i.buildFromModels()
+	} else if hasValues {
+		if len(i.columns) == 0 {
+			return "", nil, fmt.Errorf("dew: Columns() are required when using Values()")
+		}
+		query, args, err = i.buildFromValues()
+	} else {
+		return "", nil, fmt.Errorf("dew: no data to insert (call Models or Values)")
+	}
+
+	if err != nil {
+		return "", nil, err
+	}
+
+	if len(i.conflictTargets) > 0 {
+		query += " ON CONFLICT (" + strings.Join(i.conflictTargets, ", ") + ")"
+
+		switch i.conflictAction {
+		case ConflictActionTypeNothing:
+			query += " DO NOTHING"
+		case ConflictActionTypeUpdate:
+			if len(i.conflictSets) == 0 {
+				return "", nil, fmt.Errorf("dew: OnConflict DoUpdate requires at least one SetUpdate()")
+			}
+
+			var setParts []string
+			var updateArgs []any
+
+			for col, val := range i.conflictSets {
+				if expr, ok := val.(Expression); ok {
+					setParts = append(setParts, fmt.Sprintf("%s = %s", col, expr.Sql()))
+					updateArgs = append(updateArgs, expr.Args()...)
+				} else {
+					setParts = append(setParts, fmt.Sprintf("%s = ?", col))
+					updateArgs = append(updateArgs, val)
+				}
+			}
+
+			query += " DO UPDATE SET " + strings.Join(setParts, ", ")
+
+			args = append(args, updateArgs...)
+		}
+	}
+
+	if len(i.returningCols) > 0 {
+		query += " RETURNING "
+		for _, col := range i.returningCols {
+			query += col.Sql() + ", "
+		}
+		query = query[:len(query)-2]
+	}
+
+	return query, args, nil
+}
+
+func (i *ConfilctInsertor[T]) Exec(ctxs ...context.Context) error {
+	ctx := context.Background()
+	if len(ctxs) > 0 {
+		ctx = ctxs[0]
+	}
+
+	query, args, err := i.buildInsertQuery()
+	if err != nil {
+		return err
+	}
+
+	_, err = i.db.ExecContext(ctx, query, args...)
+	return err
+}
+
+func (i *ConfilctInsertor[T]) ToSql() (string, []any, error) {
 	return i.buildInsertQuery()
 }
