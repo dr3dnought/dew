@@ -247,3 +247,37 @@ func buildPlaceholders(count int) string {
 	}
 	return "(" + strings.Join(placeholders, ", ") + ")"
 }
+
+func replacePlaceholders(sql string, dialect Dialect, argOffset int) string {
+	if dialect == nil {
+		return sql
+	}
+
+	if strings.IndexByte(sql, '?') == -1 {
+		return sql
+	}
+
+	inQuote := false
+
+	var b strings.Builder
+	b.Grow(len(sql) + 16)
+
+	for i := 0; i < len(sql); i++ {
+		c := sql[i]
+
+		isEscaped := i > 0 && sql[i-1] == '\\'
+
+		if c == '\'' && !isEscaped {
+			inQuote = !inQuote
+		}
+
+		if c == '?' && !inQuote {
+			b.WriteString(dialect.Placeholder(argOffset))
+			argOffset++
+		} else {
+			b.WriteByte(c)
+		}
+	}
+
+	return b.String()
+}
