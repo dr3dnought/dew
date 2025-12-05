@@ -43,7 +43,12 @@ func (c IntColumn) TableName() string {
 	return ""
 }
 
-func (c IntColumn) Alias() *string { return c.alias }
+func (c IntColumn) Alias() *string {
+	if c.alias != nil && *c.alias != "" {
+		return c.alias
+	}
+	return nil
+}
 
 func (c IntColumn) As(alias string) IntColumn {
 	return IntColumn{
