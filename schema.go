@@ -65,6 +65,13 @@ func (t Table[T]) TimeColumn(name string) TimeColumn {
 	}
 }
 
+func (t Table[T]) UUIDColumn(name string) UUIDColumn {
+	return UUIDColumn{
+		name:  name,
+		table: &t.name,
+	}
+}
+
 func DefineSchema[T any, S any](tableName string, builder func(Table[T]) S) S {
 	table := NewTable[T](tableName)
 	return builder(table)

@@ -451,6 +451,82 @@ func (c TimeColumn) IsNotNull() Expression {
 	return colIsNotNull(c)
 }
 
+type UUIDColumn struct {
+	name  string
+	table *string
+	alias *string
+}
+
+func (c UUIDColumn) Sql() string {
+	if c.alias != nil {
+		return *c.alias
+	}
+
+	if c.table != nil && *c.table != "" {
+		return fmt.Sprintf("%s.%s", *c.table, c.name)
+	}
+	return c.name
+}
+
+func (c UUIDColumn) Args() []any        { return nil }
+func (c UUIDColumn) ColumnName() string { return c.name }
+func (c UUIDColumn) TableName() string {
+	if c.table != nil {
+		return *c.table
+	}
+	return ""
+}
+
+func (c UUIDColumn) Alias() *string { return c.alias }
+
+func (c UUIDColumn) As(alias string) UUIDColumn {
+	return UUIDColumn{
+		name:  c.name,
+		table: c.table,
+		alias: &alias,
+	}
+}
+
+func (c UUIDColumn) Eq(val string) Expression {
+	return colEq(c, val)
+}
+
+func (c UUIDColumn) NotEq(val string) Expression {
+	return colNotEq(c, val)
+}
+
+func (c UUIDColumn) EqSub(subQuery Expression) Expression {
+	return colEqSub(c, subQuery)
+}
+
+func (c UUIDColumn) NotEqSub(subQuery Expression) Expression {
+	return colNotEqSub(c, subQuery)
+}
+
+func (c UUIDColumn) In(vals ...string) Expression {
+	return colIn(c, convertToAny(vals...))
+}
+
+func (c UUIDColumn) InSub(subQuery Expression) Expression {
+	return colInSub(c, subQuery)
+}
+
+func (c UUIDColumn) NotIn(vals ...string) Expression {
+	return colNotIn(c, convertToAny(vals...))
+}
+
+func (c UUIDColumn) NotInSub(subQuery Expression) Expression {
+	return colNotInSub(c, subQuery)
+}
+
+func (c UUIDColumn) IsNull() Expression {
+	return colIsNull(c)
+}
+
+func (c UUIDColumn) IsNotNull() Expression {
+	return colIsNotNull(c)
+}
+
 func colEq(col Column, val any) Expression {
 	return &simpleExpr{
 		sql:  fmt.Sprintf("%s = ?", col.Sql()),
