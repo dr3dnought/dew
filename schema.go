@@ -30,6 +30,13 @@ func (t Table[T]) Insert(db *DB) *Insertor[T] {
 	}
 }
 
+func (t Table[T]) Delete(db *DB) *Deletor[T] {
+	return &Deletor[T]{
+		db:    db,
+		table: t,
+	}
+}
+
 func (t Table[T]) IntColumn(name string) IntColumn {
 	return IntColumn{
 		name:  name,
