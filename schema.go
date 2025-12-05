@@ -58,6 +58,13 @@ func (t Table[T]) FloatColumn(name string) FloatColumn {
 	}
 }
 
+func (t Table[T]) TimeColumn(name string) TimeColumn {
+	return TimeColumn{
+		name:  name,
+		table: &t.name,
+	}
+}
+
 func DefineSchema[T any, S any](tableName string, builder func(Table[T]) S) S {
 	table := NewTable[T](tableName)
 	return builder(table)

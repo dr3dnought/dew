@@ -5,7 +5,10 @@ TODO:
 */
 package dew
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 type Column interface {
 	Expression
@@ -349,6 +352,102 @@ func (c FloatColumn) IsNull() Expression {
 }
 
 func (c FloatColumn) IsNotNull() Expression {
+	return colIsNotNull(c)
+}
+
+type TimeColumn struct {
+	name  string
+	table *string
+	alias *string
+}
+
+func (c TimeColumn) Sql() string {
+	if c.alias != nil {
+		return *c.alias
+	}
+
+	if c.table != nil && *c.table != "" {
+		return fmt.Sprintf("%s.%s", *c.table, c.name)
+	}
+	return c.name
+}
+
+func (c TimeColumn) Args() []any        { return nil }
+func (c TimeColumn) ColumnName() string { return c.name }
+func (c TimeColumn) TableName() string {
+	if c.table != nil {
+		return *c.table
+	}
+	return ""
+}
+
+func (c TimeColumn) Alias() *string { return c.alias }
+
+func (c TimeColumn) As(alias string) TimeColumn {
+	return TimeColumn{
+		name:  c.name,
+		table: c.table,
+		alias: &alias,
+	}
+}
+
+func (c TimeColumn) Eq(val time.Time) Expression {
+	return colEq(c, val)
+}
+
+func (c TimeColumn) NotEq(val time.Time) Expression {
+	return colNotEq(c, val)
+}
+
+func (c TimeColumn) EqSub(subQuery Expression) Expression {
+	return colEqSub(c, subQuery)
+}
+
+func (c TimeColumn) NotEqSub(subQuery Expression) Expression {
+	return colNotEqSub(c, subQuery)
+}
+
+func (c TimeColumn) Gt(val time.Time) Expression {
+	return colGt(c, val)
+}
+
+func (c TimeColumn) Gte(val time.Time) Expression {
+	return colGte(c, val)
+}
+
+func (c TimeColumn) Lt(val time.Time) Expression {
+	return colLt(c, val)
+}
+
+func (c TimeColumn) Lte(val time.Time) Expression {
+	return colLte(c, val)
+}
+
+func (c TimeColumn) In(vals ...time.Time) Expression {
+	return colIn(c, convertToAny(vals...))
+}
+
+func (c TimeColumn) InSub(subQuery Expression) Expression {
+	return colInSub(c, subQuery)
+}
+
+func (c TimeColumn) NotIn(vals ...time.Time) Expression {
+	return colNotIn(c, convertToAny(vals...))
+}
+
+func (c TimeColumn) NotInSub(subQuery Expression) Expression {
+	return colNotInSub(c, subQuery)
+}
+
+func (c TimeColumn) Between(min, max time.Time) Expression {
+	return colBetween(c, min, max)
+}
+
+func (c TimeColumn) IsNull() Expression {
+	return colIsNull(c)
+}
+
+func (c TimeColumn) IsNotNull() Expression {
 	return colIsNotNull(c)
 }
 
