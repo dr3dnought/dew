@@ -93,7 +93,7 @@ func Asc(col any) Expression {
 			colSql = *alias
 		} else {
 			sqlStr := colExpr.Sql()
-			if idx := strings.Index(sqlStr, " AS "); idx != -1 {
+			if idx := strings.Index(strings.ToUpper(sqlStr), " AS "); idx != -1 {
 				colSql = sqlStr[:idx]
 			} else {
 				colSql = sqlStr
@@ -117,7 +117,7 @@ func Desc(col any) Expression {
 			colSql = *alias
 		} else {
 			sqlStr := colExpr.Sql()
-			if idx := strings.Index(sqlStr, " AS "); idx != -1 {
+			if idx := strings.Index(strings.ToUpper(sqlStr), " AS "); idx != -1 {
 				colSql = sqlStr[:idx]
 			} else {
 				colSql = sqlStr

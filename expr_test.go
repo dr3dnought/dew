@@ -105,6 +105,28 @@ func TestReplacePlaceholders(t *testing.T) {
 			},
 		},
 		{
+			name:      "Escaped single quote doubled",
+			sql:       "SELECT 'O''Reilly' WHERE id = ?",
+			argOffset: 0,
+			want: map[string]string{
+				"SQLite":     "SELECT 'O''Reilly' WHERE id = ?",
+				"MySQL":      "SELECT 'O''Reilly' WHERE id = ?",
+				"PostgreSQL": "SELECT 'O''Reilly' WHERE id = $1",
+				"MSSQL":      "SELECT 'O''Reilly' WHERE id = @p1",
+			},
+		},
+		{
+			name:      "Escaped single quote with backslash",
+			sql:       "SELECT 'test\\'?' WHERE id = ?",
+			argOffset: 0,
+			want: map[string]string{
+				"SQLite":     "SELECT 'test\\'?' WHERE id = ?",
+				"MySQL":      "SELECT 'test\\'?' WHERE id = ?",
+				"PostgreSQL": "SELECT 'test\\'?' WHERE id = $1",
+				"MSSQL":      "SELECT 'test\\'?' WHERE id = @p1",
+			},
+		},
+		{
 			name:      "UTF-8 Cyrillic check",
 			sql:       "SELECT 'Привет?' WHERE name = ?",
 			argOffset: 0,
@@ -182,56 +204,152 @@ func TestReplacePlaceholders_NilDialect(t *testing.T) {
 	}
 }
 
-// --- BENCHMARKS ---
+// --- Additional unit tests for expr.go ---
 
-func BenchmarkReplacePlaceholders_Simple(b *testing.B) {
-	dialects := []struct {
-		name    string
-		dialect Dialect
+// helper test column implementing Column
+type testColumn struct {
+	sql   string
+	name  string
+	table string
+	alias *string
+}
+
+func (c testColumn) Sql() string        { return c.sql }
+func (c testColumn) Args() []any        { return nil }
+func (c testColumn) ColumnName() string { return c.name }
+func (c testColumn) TableName() string  { return c.table }
+func (c testColumn) Alias() *string     { return c.alias }
+
+func TestBuildPlaceholders(t *testing.T) {
+	tests := []struct {
+		count int
+		want  string
 	}{
-		{"SQLite", SQLiteDialect{}},
-		{"PostgreSQL", PostgreSQLDialect{}},
-		{"MSSQL", MSSQLDialect{}},
+		{0, "()"},
+		{1, "(?)"},
+		{3, "(?, ?, ?)"},
+	}
+	for _, tt := range tests {
+		if got := buildPlaceholders(tt.count); got != tt.want {
+			t.Errorf("buildPlaceholders(%d) = %q, want %q", tt.count, got, tt.want)
+		}
+	}
+}
+
+func TestOperatorString(t *testing.T) {
+	if AND.String() != " AND " || OR.String() != " OR " {
+		t.Errorf("operator String() mismatch: AND=%q OR=%q", AND.String(), OR.String())
+	}
+}
+
+func TestCompoundExpr(t *testing.T) {
+	a := simpleExpr{sql: "a = ?", args: []any{1}}
+	b := simpleExpr{sql: "b = ?", args: []any{2}}
+
+	ce := And(a, b)
+	if ce.Sql() != "(a = ? AND b = ?)" {
+		t.Errorf("And Sql = %q, want %q", ce.Sql(), "(a = ? AND b = ?)")
+	}
+	if got := ce.Args(); len(got) != 2 || got[0] != 1 || got[1] != 2 {
+		t.Errorf("And Args = %v, want [1 2]", got)
 	}
 
-	sql := "SELECT * FROM users WHERE id = ? AND status = ?"
+	co := Or(a, b)
+	if co.Sql() != "(a = ? OR b = ?)" {
+		t.Errorf("Or Sql = %q, want %q", co.Sql(), "(a = ? OR b = ?)")
+	}
+}
 
-	for _, d := range dialects {
-		b.Run(d.name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				replacePlaceholders(sql, d.dialect, 0)
+func TestSortExpr(t *testing.T) {
+	alias := "c_alias"
+	colWithAlias := testColumn{sql: "col_sql", name: "c", alias: &alias}
+	colWithAs := testColumn{sql: "col_sql AS x", name: "c"}
+	colWithAsMixed := testColumn{sql: "COL_SQL as X", name: "c"}
+	expr := simpleExpr{sql: "expr_sql"}
+
+	tests := []struct {
+		name string
+		in   any
+		desc bool
+		want string
+	}{
+		{"column alias", colWithAlias, false, "c_alias ASC"},
+		{"column with AS", colWithAs, false, "col_sql ASC"},
+		{"column with AS mixed (Desc)", colWithAsMixed, true, "COL_SQL DESC"},
+		{"expression", expr, true, "expr_sql DESC"},
+		{"plain value", "price", false, "price ASC"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var e Expression
+			if tt.desc {
+				e = Desc(tt.in)
+			} else {
+				e = Asc(tt.in)
+			}
+			if e.Sql() != tt.want {
+				t.Errorf("Sql() = %q, want %q", e.Sql(), tt.want)
+			}
+			if args := e.Args(); args != nil {
+				t.Errorf("Args() = %v, want nil", args)
 			}
 		})
 	}
 }
 
-func BenchmarkReplacePlaceholders_NoOp(b *testing.B) {
-	dialect := PostgreSQLDialect{}
-	sql := "SELECT * FROM users WHERE id = 1 AND status = 'active'"
+func TestAggColumns(t *testing.T) {
+	base := simpleExpr{sql: "price"}
+	withAlias := &aggColumn{fnType: SUM, col: "price", alias: "total_price"}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		replacePlaceholders(sql, dialect, 0)
+	if Sum(base).Sql() != "SUM(price)" {
+		t.Errorf("Sum Sql = %q", Sum(base).Sql())
+	}
+	if withAlias.Sql() != "SUM(price) AS total_price" {
+		t.Errorf("agg alias Sql = %q", withAlias.Sql())
+	}
+	if cn := withAlias.ColumnName(); cn != "total_price" {
+		t.Errorf("ColumnName = %q, want %q", cn, "total_price")
+	}
+	if Count().Sql() != "COUNT(*)" {
+		t.Errorf("Count default Sql = %q", Count().Sql())
+	}
+	col := testColumn{sql: "users.id", name: "id"}
+	if Count(col).Sql() != "COUNT(users.id)" {
+		t.Errorf("Count col Sql = %q", Count(col).Sql())
+	}
+	if Count().Alias() != nil {
+		t.Errorf("Count().Alias() = %v, want nil", Count().Alias())
 	}
 }
 
-func BenchmarkReplacePlaceholders_Complex(b *testing.B) {
-	dialect := PostgreSQLDialect{}
-	sql := "INSERT INTO t VALUES "
-	for range 50 {
-		sql += "(?, ?, ?),"
-	}
+func TestAliasExpr(t *testing.T) {
+	base := simpleExpr{sql: "a + b", args: []any{1, 2}}
+	col := As(base, "sum_ab")
 
-	for b.Loop() {
-		replacePlaceholders(sql, dialect, 0)
+	if col.Sql() != "a + b AS sum_ab" {
+		t.Errorf("Alias Sql = %q", col.Sql())
+	}
+	if col.ColumnName() != "sum_ab" {
+		t.Errorf("ColumnName = %q", col.ColumnName())
+	}
+	if col.TableName() != "" {
+		t.Errorf("TableName = %q, want empty", col.TableName())
+	}
+	if got := col.Args(); len(got) != 2 || got[0] != 1 || got[1] != 2 {
+		t.Errorf("Args = %v, want [1 2]", got)
+	}
+	if col.Alias() == nil || *col.Alias() != "sum_ab" {
+		t.Errorf("Alias() = %v, want sum_ab", col.Alias())
 	}
 }
 
-func BenchmarkReplacePlaceholders_WithQuotes(b *testing.B) {
-	dialect := PostgreSQLDialect{}
-	sql := "SELECT 'test?' FROM table WHERE id = ? AND name = 'test?' AND value = ?"
-
-	for b.Loop() {
-		replacePlaceholders(sql, dialect, 0)
+func TestRaw(t *testing.T) {
+	ex := Raw("NOW() + ?", 5)
+	if ex.Sql() != "NOW() + ?" {
+		t.Errorf("Raw Sql = %q", ex.Sql())
+	}
+	if args := ex.Args(); len(args) != 1 || args[0] != 5 {
+		t.Errorf("Raw Args = %v, want [5]", args)
 	}
 }
