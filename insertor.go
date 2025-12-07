@@ -106,12 +106,12 @@ func (i *Insertor[T]) buildFromModels() (string, []any, error) {
 			rowArgs = append(rowArgs, val)
 		}
 
-		allArgs = append(allArgs, rowArgs...)
-
 		placeholders := make([]string, len(columns))
+		start := len(allArgs)
 		for j := range placeholders {
-			placeholders[j] = "?"
+			placeholders[j] = i.db.dialect.Placeholder(start + j)
 		}
+		allArgs = append(allArgs, rowArgs...)
 		valuePlaceholders[idx] = "(" + strings.Join(placeholders, ", ") + ")"
 	}
 
@@ -147,12 +147,12 @@ func (i *Insertor[T]) buildFromValues() (string, []any, error) {
 			return "", nil, fmt.Errorf("dew: row %d has %d values but %d columns", idx, len(row), len(i.columns))
 		}
 
-		allArgs = append(allArgs, row...)
-
 		placeholders := make([]string, len(row))
+		start := len(allArgs)
 		for j := range placeholders {
-			placeholders[j] = "?"
+			placeholders[j] = i.db.dialect.Placeholder(start + j)
 		}
+		allArgs = append(allArgs, row...)
 		valuePlaceholders[idx] = "(" + strings.Join(placeholders, ", ") + ")"
 	}
 

@@ -105,6 +105,7 @@ func (d *Deletor[T]) buildDeleteQuery() (string, []any, error) {
 	for _, expr := range d.wheres {
 		sql := expr.Sql()
 		if sql != "" {
+			sql = replacePlaceholders(sql, d.db.dialect, len(allArgs))
 			whereSqls = append(whereSqls, sql)
 			allArgs = append(allArgs, expr.Args()...)
 		}

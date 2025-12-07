@@ -63,11 +63,14 @@ func (s *Selector[T]) Args() []any {
 // *** SELECTOR *** ///
 
 func (s *Selector[T]) Where(expr ...Expression) *Selector[T] {
+	argOffset := len(s.args)
 	for _, exp := range expr {
 		sql := exp.Sql()
 		if sql != "" {
+			sql = replacePlaceholders(sql, s.db.dialect, argOffset)
 			s.wheres = append(s.wheres, sql)
 			s.args = append(s.args, exp.Args()...)
+			argOffset += len(exp.Args())
 		}
 	}
 	return s
@@ -438,8 +441,6 @@ func (s *Selector[T]) scanIntoOne(rows *sql.Rows, dest any) error {
 
 		scanArgs := make([]any, len(columns))
 		for i, colName := range columns {
-			// rows.Columns() уже возвращает алиасы из SQL запроса
-			// Просто используем их напрямую для маппинга
 			idx, ok := fieldMap[strings.ToLower(colName)]
 			if !ok {
 				return fmt.Errorf("dew: struct field for column '%s' not found", colName)
@@ -460,16 +461,18 @@ func (s *Selector[T]) scanIntoOne(rows *sql.Rows, dest any) error {
 // * Utils Functions * //
 
 func (s *Selector[T]) buildQuery() string {
+	baseArgs := make([]any, len(s.args))
+	copy(baseArgs, s.args)
+	finalArgs := baseArgs
+
 	selectClause := "*"
 	if len(s.columns) > 0 {
 		colSqls := make([]string, len(s.columns))
 		for i, c := range s.columns {
 			sqlStr := c.Sql()
-			// Если SQL уже содержит " AS " (регистронезависимо), значит алиас уже включен
 			if strings.Contains(strings.ToUpper(sqlStr), " AS ") {
 				colSqls[i] = sqlStr
 			} else if alias := c.Alias(); alias != nil {
-				// Генерируем "original AS alias" для обычных колонок
 				original := c.ColumnName()
 				if table := c.TableName(); table != "" {
 					original = fmt.Sprintf("%s.%s", table, original)
@@ -490,11 +493,9 @@ func (s *Selector[T]) buildQuery() string {
 			distinctColSqls := make([]string, len(s.distinctColumns))
 			for i, c := range s.distinctColumns {
 				sqlStr := c.Sql()
-				// Если SQL уже содержит " AS ", значит алиас уже включен
 				if strings.Contains(sqlStr, " AS ") {
 					distinctColSqls[i] = sqlStr
 				} else if alias := c.Alias(); alias != nil {
-					// Генерируем "original AS alias" для обычных колонок
 					original := c.ColumnName()
 					if table := c.TableName(); table != "" {
 						original = fmt.Sprintf("%s.%s", table, original)
@@ -528,18 +529,15 @@ func (s *Selector[T]) buildQuery() string {
 		var groupSqls []string
 		for _, expr := range s.groupBys {
 			sqlStr := expr.Sql()
-			// Если это Column с алиасом - используем только алиас
 			if col, ok := expr.(Column); ok {
 				if alias := col.Alias(); alias != nil {
 					sqlStr = *alias
 				} else {
-					// Убираем " AS ..." если есть
 					if idx := strings.Index(sqlStr, " AS "); idx != -1 {
 						sqlStr = sqlStr[:idx]
 					}
 				}
 			} else {
-				// Для других Expression убираем " AS ..." если есть
 				if idx := strings.Index(sqlStr, " AS "); idx != -1 {
 					sqlStr = sqlStr[:idx]
 				}
@@ -551,16 +549,26 @@ func (s *Selector[T]) buildQuery() string {
 
 	if len(s.havings) > 0 {
 		var havingSqls []string
+		argOffset := len(finalArgs)
 		for _, having := range s.havings {
-			havingSqls = append(havingSqls, having.Sql())
+			sqlStr := having.Sql()
+			sqlStr = replacePlaceholders(sqlStr, s.db.dialect, argOffset)
+			havingSqls = append(havingSqls, sqlStr)
+			finalArgs = append(finalArgs, having.Args()...)
+			argOffset += len(having.Args())
 		}
 		query += " HAVING " + strings.Join(havingSqls, " AND ")
 	}
 
 	if len(s.orderBys) > 0 {
 		var orderSqls []string
+		argOffset := len(finalArgs)
 		for _, order := range s.orderBys {
-			orderSqls = append(orderSqls, order.Sql())
+			sqlStr := order.Sql()
+			sqlStr = replacePlaceholders(sqlStr, s.db.dialect, argOffset)
+			orderSqls = append(orderSqls, sqlStr)
+			finalArgs = append(finalArgs, order.Args()...)
+			argOffset += len(order.Args())
 		}
 		query += " ORDER BY " + strings.Join(orderSqls, ", ")
 	}
@@ -571,6 +579,8 @@ func (s *Selector[T]) buildQuery() string {
 	if s.offsetCount > 0 {
 		query += fmt.Sprintf(" OFFSET %d", s.offsetCount)
 	}
+
+	s.args = finalArgs
 
 	return query
 }

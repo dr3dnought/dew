@@ -8,7 +8,7 @@ type Table[T any] struct {
 	name string
 }
 
-func NewTable[T any](name string) Table[T] {
+func NewTable[T any](name string, dialect Dialect) Table[T] {
 	return Table[T]{name: name}
 }
 
@@ -79,7 +79,7 @@ func (t Table[T]) UUIDColumn(name string) UUIDColumn {
 	}
 }
 
-func DefineSchema[T any, S any](tableName string, builder func(Table[T]) S) S {
-	table := NewTable[T](tableName)
+func DefineSchema[T any, S any](tableName string, dialect Dialect, builder func(Table[T]) S) S {
+	table := NewTable[T](tableName, dialect)
 	return builder(table)
 }
