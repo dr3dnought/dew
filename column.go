@@ -162,6 +162,10 @@ func (c StringColumn) EqSub(subQuery Expression) Expression {
 	return colEqSub(c, subQuery)
 }
 
+func (c StringColumn) NotEqSub(subQuery Expression) Expression {
+	return colNotEqSub(c, subQuery)
+}
+
 func (c StringColumn) NotEq(val string) Expression {
 	return colNotEq(c, val)
 }

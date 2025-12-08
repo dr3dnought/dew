@@ -246,17 +246,39 @@ func TestCompoundExpr(t *testing.T) {
 	a := simpleExpr{sql: "a = ?", args: []any{1}}
 	b := simpleExpr{sql: "b = ?", args: []any{2}}
 
-	ce := And(a, b)
-	if ce.Sql() != "(a = ? AND b = ?)" {
-		t.Errorf("And Sql = %q, want %q", ce.Sql(), "(a = ? AND b = ?)")
-	}
-	if got := ce.Args(); len(got) != 2 || got[0] != 1 || got[1] != 2 {
-		t.Errorf("And Args = %v, want [1 2]", got)
+	tests := []struct {
+		name string
+		expr Expression
+		sql  string
+		args []any
+	}{
+		{"And", And(a, b), "(a = ? AND b = ?)", []any{1, 2}},
+		{"Or", Or(a, b), "(a = ? OR b = ?)", []any{1, 2}},
+		{"Empty And", And(), "", nil},
+		{"Empty Or", Or(), "", nil},
 	}
 
-	co := Or(a, b)
-	if co.Sql() != "(a = ? OR b = ?)" {
-		t.Errorf("Or Sql = %q, want %q", co.Sql(), "(a = ? OR b = ?)")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.expr.Sql() != tt.sql {
+				t.Errorf("Sql = %q, want %q", tt.expr.Sql(), tt.sql)
+			}
+			if len(tt.args) == 0 {
+				if len(tt.expr.Args()) != 0 {
+					t.Errorf("Args = %v, want []", tt.expr.Args())
+				}
+				return
+			}
+			if len(tt.expr.Args()) != len(tt.args) {
+				t.Errorf("Args len = %d, want %d", len(tt.expr.Args()), len(tt.args))
+				return
+			}
+			for i, v := range tt.args {
+				if tt.expr.Args()[i] != v {
+					t.Errorf("Args[%d]=%v, want %v", i, tt.expr.Args()[i], v)
+				}
+			}
+		})
 	}
 }
 
@@ -302,21 +324,28 @@ func TestAggColumns(t *testing.T) {
 	base := simpleExpr{sql: "price"}
 	withAlias := &aggColumn{fnType: SUM, col: "price", alias: "total_price"}
 
-	if Sum(base).Sql() != "SUM(price)" {
-		t.Errorf("Sum Sql = %q", Sum(base).Sql())
+	col := testColumn{sql: "users.id", name: "id"}
+	tests := []struct {
+		name string
+		expr Column
+		sql  string
+	}{
+		{"Sum", Sum(base), "SUM(price)"},
+		{"Sum with alias", withAlias, "SUM(price) AS total_price"},
+		{"Count default", Count(), "COUNT(*)"},
+		{"Count column", Count(col), "COUNT(users.id)"},
 	}
-	if withAlias.Sql() != "SUM(price) AS total_price" {
-		t.Errorf("agg alias Sql = %q", withAlias.Sql())
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.expr.Sql() != tt.sql {
+				t.Errorf("Sql = %q, want %q", tt.expr.Sql(), tt.sql)
+			}
+		})
 	}
+
 	if cn := withAlias.ColumnName(); cn != "total_price" {
 		t.Errorf("ColumnName = %q, want %q", cn, "total_price")
-	}
-	if Count().Sql() != "COUNT(*)" {
-		t.Errorf("Count default Sql = %q", Count().Sql())
-	}
-	col := testColumn{sql: "users.id", name: "id"}
-	if Count(col).Sql() != "COUNT(users.id)" {
-		t.Errorf("Count col Sql = %q", Count(col).Sql())
 	}
 	if Count().Alias() != nil {
 		t.Errorf("Count().Alias() = %v, want nil", Count().Alias())
@@ -327,29 +356,71 @@ func TestAliasExpr(t *testing.T) {
 	base := simpleExpr{sql: "a + b", args: []any{1, 2}}
 	col := As(base, "sum_ab")
 
-	if col.Sql() != "a + b AS sum_ab" {
-		t.Errorf("Alias Sql = %q", col.Sql())
+	tests := []struct {
+		name string
+		sql  string
+		args []any
+	}{
+		{"alias", "a + b AS sum_ab", []any{1, 2}},
 	}
-	if col.ColumnName() != "sum_ab" {
-		t.Errorf("ColumnName = %q", col.ColumnName())
-	}
-	if col.TableName() != "" {
-		t.Errorf("TableName = %q, want empty", col.TableName())
-	}
-	if got := col.Args(); len(got) != 2 || got[0] != 1 || got[1] != 2 {
-		t.Errorf("Args = %v, want [1 2]", got)
-	}
-	if col.Alias() == nil || *col.Alias() != "sum_ab" {
-		t.Errorf("Alias() = %v, want sum_ab", col.Alias())
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if col.Sql() != tt.sql {
+				t.Errorf("Sql = %q, want %q", col.Sql(), tt.sql)
+			}
+			if len(col.Args()) != len(tt.args) {
+				t.Errorf("Args len = %d, want %d", len(col.Args()), len(tt.args))
+				return
+			}
+			for i, v := range tt.args {
+				if col.Args()[i] != v {
+					t.Errorf("Args[%d]=%v, want %v", i, col.Args()[i], v)
+				}
+			}
+			if col.ColumnName() != "sum_ab" {
+				t.Errorf("ColumnName = %q, want %q", col.ColumnName(), "sum_ab")
+			}
+			if col.TableName() != "" {
+				t.Errorf("TableName = %q, want empty", col.TableName())
+			}
+			if col.Alias() == nil || *col.Alias() != "sum_ab" {
+				t.Errorf("Alias() = %v, want sum_ab", col.Alias())
+			}
+		})
 	}
 }
 
 func TestRaw(t *testing.T) {
-	ex := Raw("NOW() + ?", 5)
-	if ex.Sql() != "NOW() + ?" {
-		t.Errorf("Raw Sql = %q", ex.Sql())
+	tests := []struct {
+		name string
+		expr Expression
+		sql  string
+		args []any
+	}{
+		{"one arg", Raw("NOW() + ?", 5), "NOW() + ?", []any{5}},
+		{"no args", Raw("NOW()"), "NOW()", nil},
 	}
-	if args := ex.Args(); len(args) != 1 || args[0] != 5 {
-		t.Errorf("Raw Args = %v, want [5]", args)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.expr.Sql() != tt.sql {
+				t.Errorf("Sql = %q, want %q", tt.expr.Sql(), tt.sql)
+			}
+			if tt.args == nil {
+				if tt.expr.Args() != nil {
+					t.Errorf("Args = %v, want nil", tt.expr.Args())
+				}
+				return
+			}
+			if len(tt.expr.Args()) != len(tt.args) {
+				t.Errorf("Args len = %d, want %d", len(tt.expr.Args()), len(tt.args))
+				return
+			}
+			for i, v := range tt.args {
+				if tt.expr.Args()[i] != v {
+					t.Errorf("Args[%d]=%v, want %v", i, tt.expr.Args()[i], v)
+				}
+			}
+		})
 	}
 }
