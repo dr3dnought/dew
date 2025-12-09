@@ -18,12 +18,16 @@ theme:
   features:
     - navigation.tabs
     - navigation.sections
+    - navigation.indexes
+    - navigation.expand
     - search.suggest
 
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
   - Examples: examples.md
+  - Selector: selector.md
+  - Schema: schema.md
   - API Reference: api-reference.md
 
 markdown_extensions:
