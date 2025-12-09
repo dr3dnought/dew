@@ -16,7 +16,6 @@ theme:
         icon: material/brightness-4
         name: Switch to light mode
   features:
-    - navigation.tabs
     - navigation.sections
     - navigation.indexes
     - navigation.expand
@@ -24,10 +23,11 @@ theme:
 
 nav:
   - Home: index.md
-  - Getting Started: getting-started.md
-  - Examples: examples.md
-  - Selector: selector.md
-  - Schema: schema.md
+  - Guides:
+      - Getting Started: getting-started.md
+      - Examples: examples.md
+      - Selector: selector.md
+      - Schema: schema.md
   - API Reference: api-reference.md
 
 markdown_extensions:
