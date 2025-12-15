@@ -37,6 +37,13 @@ func (t Table[T]) Delete(db *DB) *Deletor[T] {
 	}
 }
 
+func (t Table[T]) Update(db *DB) *Updator[T] {
+	return &Updator[T]{
+		db:    db,
+		table: t,
+	}
+}
+
 func (t Table[T]) IntColumn(name string) IntColumn {
 	return IntColumn{
 		name:  name,
