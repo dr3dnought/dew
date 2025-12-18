@@ -83,11 +83,12 @@ func (i *Insertor[T]) buildFromModels() (string, []any, error) {
 			continue
 		}
 
-		// TODO: read struct tags
+		columnName := getColumnName(field)
+		if columnName == "" {
+			continue // field is ignored (tag "-")
+		}
 
-		columnName := toSnakeCase(field.Name)
 		columns = append(columns, columnName)
-
 		validFieldIndexes = append(validFieldIndexes, j)
 	}
 

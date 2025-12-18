@@ -588,9 +588,15 @@ func (s *Selector[T]) buildQuery() string {
 func buildFieldMap(typ reflect.Type) map[string]int {
 	fieldMap := make(map[string]int, typ.NumField())
 	for i := 0; i < typ.NumField(); i++ {
-		fieldName := typ.Field(i).Name
-		snakeName := toSnakeCase(fieldName)
-		key := strings.ToLower(snakeName)
+		field := typ.Field(i)
+		if !field.IsExported() {
+			continue
+		}
+		columnName := getColumnName(field)
+		if columnName == "" {
+			continue
+		}
+		key := strings.ToLower(columnName)
 		fieldMap[key] = i
 	}
 	return fieldMap
