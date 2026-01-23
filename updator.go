@@ -2,6 +2,7 @@ package dew
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 )
@@ -92,6 +93,44 @@ func (u *Updator[T]) RowsAffected(ctxs ...context.Context) (int64, error) {
 
 func (u *Updator[T]) ToSql() (string, []any, error) {
 	return u.buildUpdateQuery()
+}
+
+func (u *Updator[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...context.Context) ([]*T, error) {
+	if len(u.returningCols) == 0 {
+		return nil, fmt.Errorf("dew: ScanWith requires Returning() to be called")
+	}
+
+	ctx := context.Background()
+	if len(ctxs) > 0 {
+		ctx = ctxs[0]
+	}
+
+	query, args, err := u.buildUpdateQuery()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := u.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []*T
+
+	for rows.Next() {
+		item, err := scanner(rows)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
 }
 
 func (u *Updator[T]) Clone() *Updator[T] {
