@@ -2,6 +2,7 @@ package dew
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"reflect"
 	"strings"
@@ -175,21 +176,37 @@ func (i *Insertor[T]) buildInsertQuery() (string, []any, error) {
 		return "", nil, fmt.Errorf("dew: cannot use both Models() and Values() in the same insert statement")
 	}
 
+	var query string
+	var args []any
+	var err error
+
 	if hasModels {
 		if len(i.columns) > 0 {
 			return "", nil, fmt.Errorf("dew: do not use Columns() with Models(), columns are inferred from struct fields")
 		}
-		return i.buildFromModels()
-	}
-
-	if hasValues {
+		query, args, err = i.buildFromModels()
+	} else if hasValues {
 		if len(i.columns) == 0 {
 			return "", nil, fmt.Errorf("dew: Columns() are required when using Values()")
 		}
-		return i.buildFromValues()
+		query, args, err = i.buildFromValues()
+	} else {
+		return "", nil, fmt.Errorf("dew: no data to insert (call Models or Values)")
 	}
 
-	return "", nil, fmt.Errorf("dew: no data to insert (call Models or Values)")
+	if err != nil {
+		return "", nil, err
+	}
+
+	if len(i.returningCols) > 0 {
+		query += " RETURNING "
+		for _, col := range i.returningCols {
+			query += col.Sql() + ", "
+		}
+		query = query[:len(query)-2]
+	}
+
+	return query, args, nil
 }
 
 func (i *Insertor[T]) Exec(ctxs ...context.Context) error {
@@ -209,6 +226,44 @@ func (i *Insertor[T]) Exec(ctxs ...context.Context) error {
 
 func (i *Insertor[T]) ToSql() (string, []any, error) {
 	return i.buildInsertQuery()
+}
+
+func (i *Insertor[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...context.Context) ([]*T, error) {
+	if len(i.returningCols) == 0 {
+		return nil, fmt.Errorf("dew: ScanWith requires Returning() to be called")
+	}
+
+	ctx := context.Background()
+	if len(ctxs) > 0 {
+		ctx = ctxs[0]
+	}
+
+	query, args, err := i.buildInsertQuery()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := i.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []*T
+
+	for rows.Next() {
+		item, err := scanner(rows)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
 }
 
 type ConfilctInsertor[T any] struct {
@@ -328,4 +383,42 @@ func (i *ConfilctInsertor[T]) Exec(ctxs ...context.Context) error {
 
 func (i *ConfilctInsertor[T]) ToSql() (string, []any, error) {
 	return i.buildInsertQuery()
+}
+
+func (i *ConfilctInsertor[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...context.Context) ([]*T, error) {
+	if len(i.returningCols) == 0 {
+		return nil, fmt.Errorf("dew: ScanWith requires Returning() to be called")
+	}
+
+	ctx := context.Background()
+	if len(ctxs) > 0 {
+		ctx = ctxs[0]
+	}
+
+	query, args, err := i.buildInsertQuery()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := i.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []*T
+
+	for rows.Next() {
+		item, err := scanner(rows)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
 }
