@@ -344,7 +344,8 @@ func (i *ConfilctInsertor[T]) buildInsertQuery() (string, []any, error) {
 					setParts = append(setParts, fmt.Sprintf("%s = %s", col, expr.Sql()))
 					updateArgs = append(updateArgs, expr.Args()...)
 				} else {
-					setParts = append(setParts, fmt.Sprintf("%s = ?", col))
+					placeholderIndex := len(args) + len(updateArgs)
+					setParts = append(setParts, fmt.Sprintf("%s = %s", col, i.db.dialect.Placeholder(placeholderIndex)))
 					updateArgs = append(updateArgs, val)
 				}
 			}
