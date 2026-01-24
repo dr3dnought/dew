@@ -630,10 +630,18 @@ func resolveScanIndices(modelType reflect.Type, columns []Column) ([]int, error)
 
 func prepareScanArgs(val reflect.Value, indices []int) []any {
 	if indices == nil {
-		num := val.NumField()
-		args := make([]any, num)
+		typ := val.Type()
+		num := typ.NumField()
+		args := make([]any, 0, num)
 		for i := range num {
-			args[i] = val.Field(i).Addr().Interface()
+			field := typ.Field(i)
+			if !field.IsExported() {
+				continue
+			}
+			if getColumnName(field) == "" {
+				continue
+			}
+			args = append(args, val.Field(i).Addr().Interface())
 		}
 		return args
 	}
