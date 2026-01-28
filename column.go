@@ -6,7 +6,10 @@ TODO:
 package dew
 
 import (
+	"database/sql/driver"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -534,6 +537,191 @@ func (c UUIDColumn) IsNull() Expression {
 
 func (c UUIDColumn) IsNotNull() Expression {
 	return colIsNotNull(c)
+}
+
+type JSONBColumn[T any] struct {
+	name  string
+	table *string
+	alias *string
+	path  []string // for nested path access
+}
+
+func (c JSONBColumn[T]) Sql() string {
+	if c.alias != nil {
+		return *c.alias
+	}
+
+	base := c.name
+	if c.table != nil && *c.table != "" {
+		base = fmt.Sprintf("%s.%s", *c.table, c.name)
+	}
+
+	for _, key := range c.path {
+		base = fmt.Sprintf("%s->'%s'", base, key)
+	}
+
+	return base
+}
+
+func (c JSONBColumn[T]) Args() []any        { return nil }
+func (c JSONBColumn[T]) ColumnName() string { return c.name }
+func (c JSONBColumn[T]) TableName() string {
+	if c.table != nil {
+		return *c.table
+	}
+	return ""
+}
+
+func (c JSONBColumn[T]) Alias() *string { return c.alias }
+
+func (c JSONBColumn[T]) As(alias string) JSONBColumn[T] {
+	return JSONBColumn[T]{
+		name:  c.name,
+		table: c.table,
+		alias: &alias,
+		path:  c.path,
+	}
+}
+
+// Contains checks if JSONB contains the given value (@> operator)
+func (c JSONBColumn[T]) Contains(val T) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s @> ?", c.baseSql()),
+		args: []any{jsonbValue{val}},
+	}
+}
+
+// ContainedBy checks if JSONB is contained by the given value (<@ operator)
+func (c JSONBColumn[T]) ContainedBy(val T) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s <@ ?", c.baseSql()),
+		args: []any{jsonbValue{val}},
+	}
+}
+
+// HasKey checks if JSONB has the given key (? operator)
+func (c JSONBColumn[T]) HasKey(key string) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s ?? ?", c.baseSql()), // ?? escapes ? for placeholder replacement
+		args: []any{key},
+	}
+}
+
+// HasAnyKey checks if JSONB has any of the given keys (?| operator)
+func (c JSONBColumn[T]) HasAnyKey(keys ...string) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s ??| ?", c.baseSql()),
+		args: []any{pgStringArray(keys)},
+	}
+}
+
+// HasAllKeys checks if JSONB has all of the given keys (?& operator)
+func (c JSONBColumn[T]) HasAllKeys(keys ...string) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s ??& ?", c.baseSql()),
+		args: []any{pgStringArray(keys)},
+	}
+}
+
+// Path returns a new JSONBColumn for nested path access (-> operator)
+func (c JSONBColumn[T]) Path(keys ...string) JSONBColumn[T] {
+	newPath := make([]string, len(c.path)+len(keys))
+	copy(newPath, c.path)
+	copy(newPath[len(c.path):], keys)
+	return JSONBColumn[T]{
+		name:  c.name,
+		table: c.table,
+		path:  newPath,
+	}
+}
+
+// PathText returns a StringColumn for text extraction (->> operator)
+func (c JSONBColumn[T]) PathText(keys ...string) StringColumn {
+	base := c.name
+	if c.table != nil && *c.table != "" {
+		base = fmt.Sprintf("%s.%s", *c.table, c.name)
+	}
+
+	// Build path: col->'key1'->'key2'->>'lastKey'
+	for i, key := range keys {
+		if i == len(keys)-1 {
+			base = fmt.Sprintf("%s->>'%s'", base, key)
+		} else {
+			base = fmt.Sprintf("%s->'%s'", base, key)
+		}
+	}
+
+	return StringColumn{name: base}
+}
+
+func (c JSONBColumn[T]) Eq(val T) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s = ?", c.baseSql()),
+		args: []any{jsonbValue{val}},
+	}
+}
+
+func (c JSONBColumn[T]) NotEq(val T) Expression {
+	return &simpleExpr{
+		sql:  fmt.Sprintf("%s != ?", c.baseSql()),
+		args: []any{jsonbValue{val}},
+	}
+}
+
+func (c JSONBColumn[T]) IsNull() Expression {
+	return colIsNull(c)
+}
+
+func (c JSONBColumn[T]) IsNotNull() Expression {
+	return colIsNotNull(c)
+}
+
+// baseSql returns SQL without alias (for operators)
+func (c JSONBColumn[T]) baseSql() string {
+	base := c.name
+	if c.table != nil && *c.table != "" {
+		base = fmt.Sprintf("%s.%s", *c.table, c.name)
+	}
+	for _, key := range c.path {
+		base = fmt.Sprintf("%s->'%s'", base, key)
+	}
+	return base
+}
+
+func JSONBCol[T any, M any](t Table[M], name string) JSONBColumn[T] {
+	tableName := t.TableName()
+	return JSONBColumn[T]{
+		name:  name,
+		table: &tableName,
+	}
+}
+
+type jsonbValue struct {
+	val any
+}
+
+func (j jsonbValue) Value() (driver.Value, error) {
+	return json.Marshal(j.val)
+}
+
+// pgStringArray implements driver.Valuer for PostgreSQL text[] array
+type pgStringArray []string
+
+func (a pgStringArray) Value() (driver.Value, error) {
+	if a == nil {
+		return nil, nil
+	}
+	if len(a) == 0 {
+		return "{}", nil
+	}
+
+	escaped := make([]string, len(a))
+	for i, s := range a {
+		s = strings.ReplaceAll(s, `\`, `\\`)
+		s = strings.ReplaceAll(s, `"`, `\"`)
+		escaped[i] = `"` + s + `"`
+	}
+	return "{" + strings.Join(escaped, ",") + "}", nil
 }
 
 func colEq(col Column, val any) Expression {
