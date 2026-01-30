@@ -86,6 +86,17 @@ func (t Table[T]) UUIDColumn(name string) UUIDColumn {
 	}
 }
 
+// JSONBColumn creates a typed JSONB column.
+// Due to Go generics limitation, this is a standalone function, not a method.
+// Usage: dew.JSONBColumn[MyType](t, "column_name")
+func DefineJSONBColumn[V any, T any](t Table[T], name string) JSONBColumn[V] {
+	tableName := t.name
+	return JSONBColumn[V]{
+		name:  name,
+		table: &tableName,
+	}
+}
+
 func DefineSchema[T any, S any](tableName string, dialect Dialect, builder func(Table[T]) S) S {
 	table := NewTable[T](tableName, dialect)
 	return builder(table)

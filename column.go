@@ -688,14 +688,6 @@ func (c JSONBColumn[T]) baseSql() string {
 	return base
 }
 
-func JSONBCol[T any, M any](t Table[M], name string) JSONBColumn[T] {
-	tableName := t.TableName()
-	return JSONBColumn[T]{
-		name:  name,
-		table: &tableName,
-	}
-}
-
 type jsonbValue struct {
 	val any
 }
