@@ -57,3 +57,5 @@ dist/
 build/
 *.egg-info/
 
+# Docker
+docker-compose.yml

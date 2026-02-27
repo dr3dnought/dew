@@ -272,8 +272,14 @@ func replacePlaceholders(sql string, dialect Dialect, argOffset int) string {
 		}
 
 		if c == '?' && !inQuote {
-			b.WriteString(dialect.Placeholder(argOffset))
-			argOffset++
+			// ?? is an escape sequence for a literal '?' (used by PostgreSQL JSONB operators)
+			if i+1 < len(sql) && sql[i+1] == '?' {
+				b.WriteByte('?')
+				i++ // skip the second '?'
+			} else {
+				b.WriteString(dialect.Placeholder(argOffset))
+				argOffset++
+			}
 		} else {
 			b.WriteByte(c)
 		}

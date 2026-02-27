@@ -170,6 +170,39 @@ func TestReplacePlaceholders(t *testing.T) {
 				"MSSQL":      "SELECT 'test' WHERE id = @p1 AND name = 'test?'",
 			},
 		},
+		{
+			name:      "Escaped ?? for JSONB ? operator",
+			sql:       "data ?? ?",
+			argOffset: 0,
+			want: map[string]string{
+				"SQLite":     "data ? ?",
+				"MySQL":      "data ? ?",
+				"PostgreSQL": "data ? $1",
+				"MSSQL":      "data ? @p1",
+			},
+		},
+		{
+			name:      "Escaped ??| for JSONB ?| operator",
+			sql:       "data ??| ?",
+			argOffset: 0,
+			want: map[string]string{
+				"SQLite":     "data ?| ?",
+				"MySQL":      "data ?| ?",
+				"PostgreSQL": "data ?| $1",
+				"MSSQL":      "data ?| @p1",
+			},
+		},
+		{
+			name:      "Escaped ??& for JSONB ?& operator",
+			sql:       "data ??& ?",
+			argOffset: 0,
+			want: map[string]string{
+				"SQLite":     "data ?& ?",
+				"MySQL":      "data ?& ?",
+				"PostgreSQL": "data ?& $1",
+				"MSSQL":      "data ?& @p1",
+			},
+		},
 	}
 
 	for _, tt := range tests {

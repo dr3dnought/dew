@@ -1,9 +1,30 @@
 package dew
 
 import (
+	"database/sql/driver"
+	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 )
+
+// testJSONB is a test type that implements the JSONB interface (sql.Scanner + driver.Valuer).
+type testJSONB map[string]any
+
+func (j *testJSONB) Scan(src any) error {
+	switch v := src.(type) {
+	case []byte:
+		return json.Unmarshal(v, j)
+	case string:
+		return json.Unmarshal([]byte(v), j)
+	default:
+		return fmt.Errorf("testJSONB.Scan: unsupported type %T", src)
+	}
+}
+
+func (j testJSONB) Value() (driver.Value, error) {
+	return json.Marshal(j)
+}
 
 // helper column for low-level col* tests
 type helperColumn struct {
@@ -1382,5 +1403,522 @@ func TestColSubQueries(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// --- JSONB Column Tests ---
+
+func TestJSONBColumn_Sql(t *testing.T) {
+	tests := []struct {
+		name     string
+		column   JSONBColumn[*testJSONB]
+		expected string
+	}{
+		{
+			name:     "simple",
+			column:   JSONBColumn[*testJSONB]{name: "data"},
+			expected: "data",
+		},
+		{
+			name:     "with table",
+			column:   JSONBColumn[*testJSONB]{name: "data", table: stringPtr("users")},
+			expected: "users.data",
+		},
+		{
+			name:     "with alias",
+			column:   JSONBColumn[*testJSONB]{name: "data", alias: stringPtr("d")},
+			expected: "d",
+		},
+		{
+			name:     "with path",
+			column:   JSONBColumn[*testJSONB]{name: "data", table: stringPtr("users"), path: []string{"address", "city"}},
+			expected: "users.data->'address'->'city'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.column.Sql(); got != tt.expected {
+				t.Errorf("Sql() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestJSONBColumn_Contains(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data", table: stringPtr("users")}
+	val := &testJSONB{"key": "value"}
+	expr := col.Contains(val)
+
+	expected := "users.data @> ?::jsonb"
+	if expr.Sql() != expected {
+		t.Errorf("Sql() = %q, want %q", expr.Sql(), expected)
+	}
+	if len(expr.Args()) != 1 {
+		t.Fatalf("Args len = %d, want 1", len(expr.Args()))
+	}
+}
+
+func TestJSONBColumn_ContainedBy(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data"}
+	val := &testJSONB{"key": "value"}
+	expr := col.ContainedBy(val)
+
+	expected := "data <@ ?::jsonb"
+	if expr.Sql() != expected {
+		t.Errorf("Sql() = %q, want %q", expr.Sql(), expected)
+	}
+}
+
+func TestJSONBColumn_HasKey(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data", table: stringPtr("users")}
+	expr := col.HasKey("name")
+
+	expected := "users.data ?? ?"
+	if expr.Sql() != expected {
+		t.Errorf("Sql() = %q, want %q", expr.Sql(), expected)
+	}
+	if len(expr.Args()) != 1 || expr.Args()[0] != "name" {
+		t.Errorf("Args = %v, want [name]", expr.Args())
+	}
+}
+
+func TestJSONBColumn_HasAnyKey(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data"}
+	expr := col.HasAnyKey("a", "b", "c")
+
+	expected := "data ??| ARRAY[?, ?, ?]"
+	if expr.Sql() != expected {
+		t.Errorf("Sql() = %q, want %q", expr.Sql(), expected)
+	}
+	if len(expr.Args()) != 3 {
+		t.Fatalf("Args len = %d, want 3", len(expr.Args()))
+	}
+	for i, want := range []string{"a", "b", "c"} {
+		if expr.Args()[i] != want {
+			t.Errorf("Args[%d] = %v, want %q", i, expr.Args()[i], want)
+		}
+	}
+}
+
+func TestJSONBColumn_HasAllKeys(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data"}
+	expr := col.HasAllKeys("x", "y")
+
+	expected := "data ??& ARRAY[?, ?]"
+	if expr.Sql() != expected {
+		t.Errorf("Sql() = %q, want %q", expr.Sql(), expected)
+	}
+	if len(expr.Args()) != 2 {
+		t.Fatalf("Args len = %d, want 2", len(expr.Args()))
+	}
+}
+
+func TestJSONBColumn_Eq(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data"}
+	val := &testJSONB{"k": "v"}
+	expr := col.Eq(val)
+
+	expected := "data = ?::jsonb"
+	if expr.Sql() != expected {
+		t.Errorf("Sql() = %q, want %q", expr.Sql(), expected)
+	}
+}
+
+func TestJSONBColumn_NotEq(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data"}
+	val := &testJSONB{"k": "v"}
+	expr := col.NotEq(val)
+
+	expected := "data != ?::jsonb"
+	if expr.Sql() != expected {
+		t.Errorf("Sql() = %q, want %q", expr.Sql(), expected)
+	}
+}
+
+func TestJSONBColumn_Path(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data", table: stringPtr("t")}
+	nested := col.Path("address", "city")
+
+	expected := "t.data->'address'->'city'"
+	if nested.Sql() != expected {
+		t.Errorf("Sql() = %q, want %q", nested.Sql(), expected)
+	}
+
+	// Chained path
+	deeper := nested.Path("zip")
+	expected2 := "t.data->'address'->'city'->'zip'"
+	if deeper.Sql() != expected2 {
+		t.Errorf("Sql() = %q, want %q", deeper.Sql(), expected2)
+	}
+}
+
+func TestJSONBColumn_PathText(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data", table: stringPtr("t")}
+	result := col.PathText("address", "city")
+
+	expected := "t.data->'address'->>'city'"
+	if result.Sql() != expected {
+		t.Errorf("Sql() = %q, want %q", result.Sql(), expected)
+	}
+
+	// PathText on a column with existing path
+	nested := col.Path("profile")
+	result2 := nested.PathText("name")
+	expected2 := "t.data->'profile'->>'name'"
+	if result2.Sql() != expected2 {
+		t.Errorf("Sql() = %q, want %q", result2.Sql(), expected2)
+	}
+
+	// PathText returns rawColumn, not StringColumn
+	if result.TableName() != "" {
+		t.Errorf("TableName() = %q, want empty", result.TableName())
+	}
+}
+
+func TestJSONBColumn_PathKeyEscaping(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data"}
+
+	// Single quote in key should be escaped by doubling
+	nested := col.Path("it's")
+	expected := "data->'it''s'"
+	if nested.Sql() != expected {
+		t.Errorf("Sql() = %q, want %q", nested.Sql(), expected)
+	}
+
+	// PathText with quote in key
+	result := col.PathText("it's")
+	expected2 := "data->>'it''s'"
+	if result.Sql() != expected2 {
+		t.Errorf("Sql() = %q, want %q", result.Sql(), expected2)
+	}
+}
+
+func TestJSONBColumn_IsNull(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data", table: stringPtr("t")}
+
+	expr := col.IsNull()
+	if expr.Sql() != "t.data IS NULL" {
+		t.Errorf("Sql() = %q, want %q", expr.Sql(), "t.data IS NULL")
+	}
+
+	expr2 := col.IsNotNull()
+	if expr2.Sql() != "t.data IS NOT NULL" {
+		t.Errorf("Sql() = %q, want %q", expr2.Sql(), "t.data IS NOT NULL")
+	}
+}
+
+func TestJSONBColumn_As(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data", table: stringPtr("t")}
+	aliased := col.As("d")
+
+	if aliased.Sql() != "d" {
+		t.Errorf("Sql() = %q, want %q", aliased.Sql(), "d")
+	}
+	if aliased.Alias() == nil || *aliased.Alias() != "d" {
+		t.Errorf("Alias() = %v, want \"d\"", aliased.Alias())
+	}
+	// original unchanged
+	if col.Alias() != nil {
+		t.Errorf("original Alias() = %v, want nil", col.Alias())
+	}
+
+	// As preserves path
+	withPath := col.Path("nested").As("n")
+	if withPath.Sql() != "n" {
+		t.Errorf("Sql() = %q, want %q", withPath.Sql(), "n")
+	}
+	// baseSql still uses path (for operators)
+	expr := withPath.Contains(&testJSONB{"x": 1})
+	expected := "t.data->'nested' @> ?::jsonb"
+	if expr.Sql() != expected {
+		t.Errorf("Contains Sql() = %q, want %q", expr.Sql(), expected)
+	}
+}
+
+func TestJSONBColumn_Accessors(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data", table: stringPtr("users")}
+
+	if col.ColumnName() != "data" {
+		t.Errorf("ColumnName() = %q, want %q", col.ColumnName(), "data")
+	}
+	if col.TableName() != "users" {
+		t.Errorf("TableName() = %q, want %q", col.TableName(), "users")
+	}
+	if col.Alias() != nil {
+		t.Errorf("Alias() = %v, want nil", col.Alias())
+	}
+	if col.Args() != nil {
+		t.Errorf("Args() = %v, want nil", col.Args())
+	}
+
+	// no table
+	col2 := JSONBColumn[*testJSONB]{name: "data"}
+	if col2.TableName() != "" {
+		t.Errorf("TableName() = %q, want empty", col2.TableName())
+	}
+}
+
+func TestJSONBColumn_OperatorsOnPath(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data", table: stringPtr("t")}
+	nested := col.Path("settings")
+	val := &testJSONB{"k": "v"}
+
+	tests := []struct {
+		name string
+		expr Expression
+		sql  string
+	}{
+		{"Contains on path", nested.Contains(val), "t.data->'settings' @> ?::jsonb"},
+		{"ContainedBy on path", nested.ContainedBy(val), "t.data->'settings' <@ ?::jsonb"},
+		{"Eq on path", nested.Eq(val), "t.data->'settings' = ?::jsonb"},
+		{"NotEq on path", nested.NotEq(val), "t.data->'settings' != ?::jsonb"},
+		{"HasKey on path", nested.HasKey("theme"), "t.data->'settings' ?? ?"},
+		{"IsNull on path", nested.IsNull(), "t.data->'settings' IS NULL"},
+		{"IsNotNull on path", nested.IsNotNull(), "t.data->'settings' IS NOT NULL"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.expr.Sql() != tt.sql {
+				t.Errorf("Sql() = %q, want %q", tt.expr.Sql(), tt.sql)
+			}
+		})
+	}
+}
+
+func TestJSONBColumn_HasAnyKeySingleKey(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data"}
+	expr := col.HasAnyKey("only")
+
+	expected := "data ??| ARRAY[?]"
+	if expr.Sql() != expected {
+		t.Errorf("Sql() = %q, want %q", expr.Sql(), expected)
+	}
+	if len(expr.Args()) != 1 || expr.Args()[0] != "only" {
+		t.Errorf("Args = %v, want [only]", expr.Args())
+	}
+}
+
+func TestJSONBColumn_HasAllKeysSingleKey(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data"}
+	expr := col.HasAllKeys("only")
+
+	expected := "data ??& ARRAY[?]"
+	if expr.Sql() != expected {
+		t.Errorf("Sql() = %q, want %q", expr.Sql(), expected)
+	}
+	if len(expr.Args()) != 1 || expr.Args()[0] != "only" {
+		t.Errorf("Args = %v, want [only]", expr.Args())
+	}
+}
+
+func TestJSONBColumn_PathTextSingleKey(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data", table: stringPtr("t")}
+	result := col.PathText("name")
+
+	expected := "t.data->>'name'"
+	if result.Sql() != expected {
+		t.Errorf("Sql() = %q, want %q", result.Sql(), expected)
+	}
+}
+
+func TestJSONBColumn_testJSONBValue(t *testing.T) {
+	val := &testJSONB{"role": "admin", "level": float64(5)}
+	got, err := val.Value()
+	if err != nil {
+		t.Fatalf("Value() error: %v", err)
+	}
+
+	bytes, ok := got.([]byte)
+	if !ok {
+		t.Fatalf("Value() type = %T, want []byte", got)
+	}
+
+	var decoded testJSONB
+	if err := json.Unmarshal(bytes, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+	if decoded["role"] != "admin" {
+		t.Errorf("decoded = %v, want map[role:admin level:5]", decoded)
+	}
+}
+
+func TestJSONBColumn_testJSONBScan(t *testing.T) {
+	input := []byte(`{"name":"Alice","age":30}`)
+
+	var val testJSONB
+	err := val.Scan(input)
+	if err != nil {
+		t.Fatalf("Scan() error: %v", err)
+	}
+	if val["name"] != "Alice" {
+		t.Errorf("Scan result = %v, want map[name:Alice age:30]", val)
+	}
+
+	// Scan from string
+	var val2 testJSONB
+	err = val2.Scan(`{"k":"v"}`)
+	if err != nil {
+		t.Fatalf("Scan(string) error: %v", err)
+	}
+	if val2["k"] != "v" {
+		t.Errorf("Scan(string) result = %v, want map[k:v]", val2)
+	}
+
+	// Scan from unsupported type
+	var val3 testJSONB
+	err = val3.Scan(12345)
+	if err == nil {
+		t.Error("Scan(int) should return error")
+	}
+}
+
+func TestJSONBColumn_rawColumn(t *testing.T) {
+	rc := rawColumn{sql: "t.data->>'city'"}
+
+	if rc.Sql() != "t.data->>'city'" {
+		t.Errorf("Sql() = %q, want %q", rc.Sql(), "t.data->>'city'")
+	}
+	if rc.ColumnName() != "t.data->>'city'" {
+		t.Errorf("ColumnName() = %q, want %q", rc.ColumnName(), "t.data->>'city'")
+	}
+	if rc.TableName() != "" {
+		t.Errorf("TableName() = %q, want empty", rc.TableName())
+	}
+	if rc.Args() != nil {
+		t.Errorf("Args() = %v, want nil", rc.Args())
+	}
+	if rc.Alias() != nil {
+		t.Errorf("Alias() = %v, want nil", rc.Alias())
+	}
+
+	// with alias
+	alias := "city"
+	rcAlias := rawColumn{sql: "t.data->>'city'", alias: &alias}
+	expected := "t.data->>'city' AS city"
+	if rcAlias.Sql() != expected {
+		t.Errorf("Sql() = %q, want %q", rcAlias.Sql(), expected)
+	}
+	if rcAlias.Alias() == nil || *rcAlias.Alias() != "city" {
+		t.Errorf("Alias() = %v, want \"city\"", rcAlias.Alias())
+	}
+}
+
+func TestJSONBColumn_DefineJSONBColumn(t *testing.T) {
+	type Model struct{}
+	table := NewTable[Model]("items", PostgreSQLDialect{})
+	col := DefineJSONBColumn[*testJSONB](table, "metadata")
+
+	if col.ColumnName() != "metadata" {
+		t.Errorf("ColumnName() = %q, want %q", col.ColumnName(), "metadata")
+	}
+	if col.TableName() != "items" {
+		t.Errorf("TableName() = %q, want %q", col.TableName(), "items")
+	}
+	if col.Sql() != "items.metadata" {
+		t.Errorf("Sql() = %q, want %q", col.Sql(), "items.metadata")
+	}
+}
+
+func TestJSONBColumn_PlaceholderReplacement(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data", table: stringPtr("t")}
+	pg := PostgreSQLDialect{}
+	val := &testJSONB{"k": "v"}
+
+	tests := []struct {
+		name string
+		expr Expression
+		want string
+	}{
+		{
+			"Contains",
+			col.Contains(val),
+			"t.data @> $1::jsonb",
+		},
+		{
+			"HasKey",
+			col.HasKey("name"),
+			"t.data ? $1",
+		},
+		{
+			"HasAnyKey",
+			col.HasAnyKey("a", "b"),
+			"t.data ?| ARRAY[$1, $2]",
+		},
+		{
+			"HasAllKeys",
+			col.HasAllKeys("x", "y", "z"),
+			"t.data ?& ARRAY[$1, $2, $3]",
+		},
+		{
+			"Eq",
+			col.Eq(val),
+			"t.data = $1::jsonb",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := replacePlaceholders(tt.expr.Sql(), pg, 0)
+			if got != tt.want {
+				t.Errorf("replacePlaceholders() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestJSONBColumn_ComposeWithAndOr(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data"}
+
+	expr := And(
+		col.HasKey("name"),
+		Or(
+			col.Contains(&testJSONB{"role": "admin"}),
+			col.IsNull(),
+		),
+	)
+
+	expected := "(data ?? ? AND (data @> ?::jsonb OR data IS NULL))"
+	if expr.Sql() != expected {
+		t.Errorf("Sql() = %q, want %q", expr.Sql(), expected)
+	}
+	if len(expr.Args()) != 2 {
+		t.Errorf("Args len = %d, want 2", len(expr.Args()))
+	}
+	if expr.Args()[0] != "name" {
+		t.Errorf("Args[0] = %v, want \"name\"", expr.Args()[0])
+	}
+}
+
+func TestJSONBColumn_PathKeyEscapingMultipleQuotes(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data"}
+
+	// Multiple single quotes
+	nested := col.Path("it''s")
+	expected := "data->'it''''s'"
+	if nested.Sql() != expected {
+		t.Errorf("Sql() = %q, want %q", nested.Sql(), expected)
+	}
+
+	// Quote at start/end: 'key' -> ''key'' inside SQL quotes -> data->'''key'''
+	nested2 := col.Path("'key'")
+	expected2 := "data->'''key'''"
+	if nested2.Sql() != expected2 {
+		t.Errorf("Sql() = %q, want %q", nested2.Sql(), expected2)
+	}
+}
+
+func TestJSONBColumn_PathDoesNotMutateOriginal(t *testing.T) {
+	col := JSONBColumn[*testJSONB]{name: "data", table: stringPtr("t")}
+
+	_ = col.Path("a", "b")
+
+	// Original should still be plain
+	if col.Sql() != "t.data" {
+		t.Errorf("original Sql() = %q, want %q", col.Sql(), "t.data")
+	}
+	if len(col.path) != 0 {
+		t.Errorf("original path = %v, want empty", col.path)
 	}
 }
