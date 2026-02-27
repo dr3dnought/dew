@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
@@ -157,127 +158,80 @@ func main() {
 		},
 	}
 
-	users := []*User{user1, user2, user3}
+	// === Transaction example ===
+	fmt.Println("=== Transaction: insert two users atomically ===")
 
-	for _, user := range users {
-		err = dew.Insert[User](db, Users).
-			Columns(Users.Name, Users.Profile, Users.Address).
-			Values(user.Name, user.Profile, user.Address).
-			Exec()
-		if err != nil {
-			log.Fatal("insert:", err)
-		}
-	}
-
-	// -- HasKey (?) --
-	fmt.Println("=== HasKey: profile ? 'role' ===")
-	user, err := Users.From(db).
-		Select(Users.Name, Users.Profile, Users.Address).
-		Where(Users.Profile.HasKey("role")).
-		One()
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		log.Fatal("HasKey:", err)
+		log.Fatal("begin tx:", err)
 	}
-	fmt.Println(user.String())
 
-	// -- Contains (@>) --
-	fmt.Println("\n=== Contains: profile @> {\"age\": 30} ===")
-	thirtyYearOlds, err := Users.From(db).
-		Select(Users.Name, Users.Profile).
-		Where(Users.Profile.Contains(&Profile{"age": float64(30)})).
-		All()
+	// Both inserts go through the transaction
+	err = Users.Insert(tx).
+		Columns(Users.Name, Users.Profile, Users.Address).
+		Values(user1.Name, user1.Profile, user1.Address).
+		Exec(ctx)
 	if err != nil {
-		log.Fatal("Contains:", err)
-	}
-	for _, u := range thirtyYearOlds {
-		fmt.Println(u.String())
+		tx.Rollback()
+		log.Fatal("tx insert 1:", err)
 	}
 
-	// -- ContainedBy (<@) --
-	fmt.Println("\n=== ContainedBy: profile <@ superset ===")
-	superset := &Profile{"name": "Jim Beam", "age": float64(40), "role": "admin", "extra": "ignored"}
-	contained, err := Users.From(db).
-		Select(Users.Name, Users.Profile).
-		Where(Users.Profile.ContainedBy(superset)).
-		All()
+	err = Users.Insert(tx).
+		Columns(Users.Name, Users.Profile, Users.Address).
+		Values(user2.Name, user2.Profile, user2.Address).
+		Exec(ctx)
 	if err != nil {
-		log.Fatal("ContainedBy:", err)
-	}
-	for _, u := range contained {
-		fmt.Println(u.String())
+		tx.Rollback()
+		log.Fatal("tx insert 2:", err)
 	}
 
-	fmt.Println("\n=== HasAnyKey: profile ?| ['role', 'missing'] ===")
-	anyKey, err := Users.From(db).
-		Select(Users.Name, Users.Profile).
-		Where(Users.Profile.HasAnyKey("role", "missing")).
-		All()
+	// Query within the same transaction — sees uncommitted rows
+	count, err := Users.From(tx).Count(ctx)
 	if err != nil {
-		log.Fatal("HasAnyKey:", err)
+		tx.Rollback()
+		log.Fatal("tx count:", err)
 	}
-	for _, u := range anyKey {
-		fmt.Println(u.String())
-	}
+	fmt.Printf("Count inside tx: %d\n", count)
 
-	// -- HasAllKeys (?&) --
-	fmt.Println("\n=== HasAllKeys: profile ?& ['name', 'age'] ===")
-	allKeys, err := Users.From(db).
-		Select(Users.Name, Users.Profile).
-		Where(Users.Profile.HasAllKeys("name", "age")).
-		All()
+	if err := tx.Commit(); err != nil {
+		log.Fatal("commit:", err)
+	}
+	fmt.Println("Transaction committed.")
+
+	// === Rollback example ===
+	fmt.Println("\n=== Transaction rollback: insert + rollback ===")
+
+	tx2, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		log.Fatal("HasAllKeys:", err)
-	}
-	for _, u := range allKeys {
-		fmt.Println(u.String())
+		log.Fatal("begin tx2:", err)
 	}
 
-	// -- PathText (->>) --
-	fmt.Println("\n=== PathText: address->>'city' ===")
-	sql, args := Users.From(db).
-		Select(Users.Name, Users.Address.PathText("city")).
-		ToSql()
-	fmt.Printf("SQL:  %s\nArgs: %v\n", sql, args)
-
-	// -- Eq (exact JSONB match) --
-	fmt.Println("\n=== Eq: address = exact ===")
-	exact, err := Users.From(db).
-		Select(Users.Name, Users.Address).
-		Where(Users.Address.Eq(&Address{City: "Chicago", Street: "789 Main St", Zip: "60601"})).
-		All()
+	err = Users.Insert(tx2).
+		Columns(Users.Name, Users.Profile, Users.Address).
+		Values(user3.Name, user3.Profile, user3.Address).
+		Exec(ctx)
 	if err != nil {
-		log.Fatal("Eq:", err)
-	}
-	for _, u := range exact {
-		fmt.Println(u.String())
+		tx2.Rollback()
+		log.Fatal("tx2 insert:", err)
 	}
 
-	// -- IsNull --
-	fmt.Println("\n=== IsNull: address IS NULL ===")
-	nullAddr, err := Users.From(db).
-		Select(Users.Name).
-		Where(Users.Address.IsNull()).
-		All()
+	countInTx, err := Users.From(tx2).Count(ctx)
 	if err != nil {
-		log.Fatal("IsNull:", err)
+		tx2.Rollback()
+		log.Fatal("tx2 count:", err)
 	}
-	fmt.Printf("Users with null address: %d\n", len(nullAddr))
+	fmt.Printf("Count inside tx2 (before rollback): %d\n", countInTx)
 
-	// -- And/Or composition --
-	fmt.Println("\n=== And/Or: (profile ? 'role') AND (address->>'city' = 'Los Angeles') ===")
-	composed, err := Users.From(db).
-		Select(Users.Name, Users.Profile, Users.Address).
-		Where(dew.And(
-			Users.Profile.HasKey("role"),
-			Users.Address.Contains(&Address{City: "Los Angeles"}),
-		)).
-		All()
+	tx2.Rollback()
+	fmt.Println("Transaction rolled back.")
+
+	// Verify rollback — count should be same as after first tx
+	countAfter, err := Users.From(db).Count(ctx)
 	if err != nil {
-		log.Fatal("And/Or:", err)
+		log.Fatal("count after rollback:", err)
 	}
-	for _, u := range composed {
-		fmt.Println(u.String())
-	}
+	fmt.Printf("Count after rollback: %d\n", countAfter)
 
 	fmt.Println("\nDone.")
 }

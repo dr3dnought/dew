@@ -13,7 +13,7 @@ type setClause struct {
 }
 
 type Updator[T any] struct {
-	db     *DB
+	db     Querier
 	table  Tabler
 	wheres []Expression
 	sets   []setClause
@@ -21,7 +21,7 @@ type Updator[T any] struct {
 	returningCols []Column
 }
 
-func Update[T any](db *DB, table Tabler) *Updator[T] {
+func Update[T any](db Querier, table Tabler) *Updator[T] {
 	return &Updator[T]{
 		db:    db,
 		table: table,
@@ -165,11 +165,11 @@ func (u *Updator[T]) buildUpdateQuery() (string, []any, error) {
 	for _, set := range u.sets {
 		if expr, ok := set.value.(Expression); ok {
 			sql := expr.Sql()
-			sql = replacePlaceholders(sql, u.db.dialect, len(allArgs))
+			sql = replacePlaceholders(sql, u.db.getDialect(), len(allArgs))
 			setParts = append(setParts, fmt.Sprintf("%s = %s", set.column, sql))
 			allArgs = append(allArgs, expr.Args()...)
 		} else {
-			placeholder := u.db.dialect.Placeholder(len(allArgs))
+			placeholder := u.db.getDialect().Placeholder(len(allArgs))
 			setParts = append(setParts, fmt.Sprintf("%s = %s", set.column, placeholder))
 			allArgs = append(allArgs, set.value)
 		}
@@ -181,7 +181,7 @@ func (u *Updator[T]) buildUpdateQuery() (string, []any, error) {
 	for _, expr := range u.wheres {
 		sql := expr.Sql()
 		if sql != "" {
-			sql = replacePlaceholders(sql, u.db.dialect, len(allArgs))
+			sql = replacePlaceholders(sql, u.db.getDialect(), len(allArgs))
 			whereSqls = append(whereSqls, sql)
 			allArgs = append(allArgs, expr.Args()...)
 		}

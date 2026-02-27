@@ -7,14 +7,14 @@ import (
 )
 
 type Deletor[T any] struct {
-	db     *DB
+	db     Querier
 	table  Tabler
 	wheres []Expression
 
 	returningCols []Column
 }
 
-func Delete[T any](db *DB, table Tabler) *Deletor[T] {
+func Delete[T any](db Querier, table Tabler) *Deletor[T] {
 	return &Deletor[T]{
 		db:    db,
 		table: table,
@@ -105,7 +105,7 @@ func (d *Deletor[T]) buildDeleteQuery() (string, []any, error) {
 	for _, expr := range d.wheres {
 		sql := expr.Sql()
 		if sql != "" {
-			sql = replacePlaceholders(sql, d.db.dialect, len(allArgs))
+			sql = replacePlaceholders(sql, d.db.getDialect(), len(allArgs))
 			whereSqls = append(whereSqls, sql)
 			allArgs = append(allArgs, expr.Args()...)
 		}

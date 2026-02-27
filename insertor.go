@@ -16,7 +16,7 @@ const (
 )
 
 type Insertor[T any] struct {
-	db      *DB
+	db      Querier
 	table   Tabler
 	columns []Column
 	values  [][]any
@@ -25,7 +25,7 @@ type Insertor[T any] struct {
 	returningCols []Column
 }
 
-func Insert[T any](db *DB, table Tabler) *Insertor[T] {
+func Insert[T any](db Querier, table Tabler) *Insertor[T] {
 	return &Insertor[T]{
 		db:    db,
 		table: table,
@@ -111,7 +111,7 @@ func (i *Insertor[T]) buildFromModels() (string, []any, error) {
 		placeholders := make([]string, len(columns))
 		start := len(allArgs)
 		for j := range placeholders {
-			placeholders[j] = i.db.dialect.Placeholder(start + j)
+			placeholders[j] = i.db.getDialect().Placeholder(start + j)
 		}
 		allArgs = append(allArgs, rowArgs...)
 		valuePlaceholders[idx] = "(" + strings.Join(placeholders, ", ") + ")"
@@ -152,7 +152,7 @@ func (i *Insertor[T]) buildFromValues() (string, []any, error) {
 		placeholders := make([]string, len(row))
 		start := len(allArgs)
 		for j := range placeholders {
-			placeholders[j] = i.db.dialect.Placeholder(start + j)
+			placeholders[j] = i.db.getDialect().Placeholder(start + j)
 		}
 		allArgs = append(allArgs, row...)
 		valuePlaceholders[idx] = "(" + strings.Join(placeholders, ", ") + ")"
@@ -345,7 +345,7 @@ func (i *ConfilctInsertor[T]) buildInsertQuery() (string, []any, error) {
 					updateArgs = append(updateArgs, expr.Args()...)
 				} else {
 					placeholderIndex := len(args) + len(updateArgs)
-					setParts = append(setParts, fmt.Sprintf("%s = %s", col, i.db.dialect.Placeholder(placeholderIndex)))
+					setParts = append(setParts, fmt.Sprintf("%s = %s", col, i.db.getDialect().Placeholder(placeholderIndex)))
 					updateArgs = append(updateArgs, val)
 				}
 			}

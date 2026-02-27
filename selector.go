@@ -25,7 +25,7 @@ type joinInfo struct {
 }
 
 type Selector[T any] struct {
-	db        *DB
+	db        Querier
 	tableName string
 	columns   []Column
 	wheres    []string
@@ -43,7 +43,7 @@ type Selector[T any] struct {
 	havings  []Expression
 }
 
-func From[T any](db *DB, schema Tabler) *Selector[T] {
+func From[T any](db Querier, schema Tabler) *Selector[T] {
 	return &Selector[T]{
 		db:        db,
 		tableName: schema.TableName(),
@@ -67,7 +67,7 @@ func (s *Selector[T]) Where(expr ...Expression) *Selector[T] {
 	for _, exp := range expr {
 		sql := exp.Sql()
 		if sql != "" {
-			sql = replacePlaceholders(sql, s.db.dialect, argOffset)
+			sql = replacePlaceholders(sql, s.db.getDialect(), argOffset)
 			s.wheres = append(s.wheres, sql)
 			s.args = append(s.args, exp.Args()...)
 			argOffset += len(exp.Args())
@@ -552,7 +552,7 @@ func (s *Selector[T]) buildQuery() string {
 		argOffset := len(finalArgs)
 		for _, having := range s.havings {
 			sqlStr := having.Sql()
-			sqlStr = replacePlaceholders(sqlStr, s.db.dialect, argOffset)
+			sqlStr = replacePlaceholders(sqlStr, s.db.getDialect(), argOffset)
 			havingSqls = append(havingSqls, sqlStr)
 			finalArgs = append(finalArgs, having.Args()...)
 			argOffset += len(having.Args())
@@ -565,7 +565,7 @@ func (s *Selector[T]) buildQuery() string {
 		argOffset := len(finalArgs)
 		for _, order := range s.orderBys {
 			sqlStr := order.Sql()
-			sqlStr = replacePlaceholders(sqlStr, s.db.dialect, argOffset)
+			sqlStr = replacePlaceholders(sqlStr, s.db.getDialect(), argOffset)
 			orderSqls = append(orderSqls, sqlStr)
 			finalArgs = append(finalArgs, order.Args()...)
 			argOffset += len(order.Args())

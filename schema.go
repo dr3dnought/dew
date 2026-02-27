@@ -16,28 +16,28 @@ func (t Table[T]) TableName() string {
 	return t.name
 }
 
-func (t Table[T]) From(db *DB) *Selector[T] {
+func (t Table[T]) From(db Querier) *Selector[T] {
 	return &Selector[T]{
 		db:        db,
 		tableName: t.name,
 	}
 }
 
-func (t Table[T]) Insert(db *DB) *Insertor[T] {
+func (t Table[T]) Insert(db Querier) *Insertor[T] {
 	return &Insertor[T]{
 		db:    db,
 		table: t,
 	}
 }
 
-func (t Table[T]) Delete(db *DB) *Deletor[T] {
+func (t Table[T]) Delete(db Querier) *Deletor[T] {
 	return &Deletor[T]{
 		db:    db,
 		table: t,
 	}
 }
 
-func (t Table[T]) Update(db *DB) *Updator[T] {
+func (t Table[T]) Update(db Querier) *Updator[T] {
 	return &Updator[T]{
 		db:    db,
 		table: t,
