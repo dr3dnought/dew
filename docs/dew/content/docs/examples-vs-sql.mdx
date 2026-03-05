@@ -1,0 +1,268 @@
+---
+title: Dew vs Raw SQL
+description: Side-by-side comparison of dew queries and raw SQL.
+---
+
+Every dew query maps directly to SQL. Here's a side-by-side comparison so you always know what's being generated.
+
+## Simple select
+
+<Tabs items={["Dew", "SQL"]}>
+<Tab value="Dew">
+```go
+users, err := Users.From(db).
+    Where(Users.Name.Eq("Alice")).
+    All(ctx)
+```
+</Tab>
+<Tab value="SQL">
+```sql
+SELECT * FROM users WHERE users.name = $1
+-- args: ["Alice"]
+```
+</Tab>
+</Tabs>
+
+## Select with columns
+
+<Tabs items={["Dew", "SQL"]}>
+<Tab value="Dew">
+```go
+users, err := Users.From(db).
+    Select(Users.Name, Users.Email).
+    Where(Users.Age.Gte(18)).
+    OrderBy(dew.Asc(Users.Name)).
+    Limit(10).
+    All(ctx)
+```
+</Tab>
+<Tab value="SQL">
+```sql
+SELECT users.name, users.email FROM users
+WHERE users.age >= $1
+ORDER BY users.name ASC
+LIMIT 10
+-- args: [18]
+```
+</Tab>
+</Tabs>
+
+## OR conditions
+
+<Tabs items={["Dew", "SQL"]}>
+<Tab value="Dew">
+```go
+users, err := Users.From(db).
+    Where(dew.Or(
+        Users.Role.Eq("admin"),
+        Users.Role.Eq("moderator"),
+    )).
+    All(ctx)
+```
+</Tab>
+<Tab value="SQL">
+```sql
+SELECT * FROM users
+WHERE (users.role = $1 OR users.role = $2)
+-- args: ["admin", "moderator"]
+```
+</Tab>
+</Tabs>
+
+## Insert
+
+<Tabs items={["Dew", "SQL"]}>
+<Tab value="Dew">
+```go
+err := Users.Insert(db).
+    Columns(Users.Name, Users.Email).
+    Values("Alice", "alice@example.com").
+    Values("Bob", "bob@example.com").
+    Exec(ctx)
+```
+</Tab>
+<Tab value="SQL">
+```sql
+INSERT INTO users (name, email) VALUES ($1, $2), ($3, $4)
+-- args: ["Alice", "alice@example.com", "Bob", "bob@example.com"]
+```
+</Tab>
+</Tabs>
+
+## Upsert
+
+<Tabs items={["Dew", "SQL"]}>
+<Tab value="Dew">
+```go
+err := Users.Insert(db).
+    Columns(Users.Name, Users.Email).
+    Values("Alice", "alice@example.com").
+    OnConflict(Users.Email).
+    SetUpdate(Users.Name, "Alice Updated").
+    Exec(ctx)
+```
+</Tab>
+<Tab value="SQL">
+```sql
+INSERT INTO users (name, email) VALUES ($1, $2)
+ON CONFLICT (email) DO UPDATE SET name = $3
+-- args: ["Alice", "alice@example.com", "Alice Updated"]
+```
+</Tab>
+</Tabs>
+
+## Update
+
+<Tabs items={["Dew", "SQL"]}>
+<Tab value="Dew">
+```go
+err := Users.Update(db).
+    Set(Users.Name, "Bob").
+    Set(Users.Age, dew.Raw("age + ?", 1)).
+    Where(Users.ID.Eq(1)).
+    Exec(ctx)
+```
+</Tab>
+<Tab value="SQL">
+```sql
+UPDATE users SET name = $1, age = age + $2
+WHERE users.id = $3
+-- args: ["Bob", 1, 1]
+```
+</Tab>
+</Tabs>
+
+## Delete
+
+<Tabs items={["Dew", "SQL"]}>
+<Tab value="Dew">
+```go
+err := Users.Delete(db).
+    Where(Users.Age.Lt(18)).
+    Exec(ctx)
+```
+</Tab>
+<Tab value="SQL">
+```sql
+DELETE FROM users WHERE users.age < $1
+-- args: [18]
+```
+</Tab>
+</Tabs>
+
+## Join
+
+<Tabs items={["Dew", "SQL"]}>
+<Tab value="Dew">
+```go
+users, err := Users.From(db).
+    Select(Users.Name, dew.Count(Orders.ID)).
+    LeftJoin(Orders, Users.ID, Orders.UserID).
+    GroupBy(Users.Name).
+    Having(dew.Raw("COUNT(orders.id) > ?", 5)).
+    All(ctx)
+```
+</Tab>
+<Tab value="SQL">
+```sql
+SELECT users.name, COUNT(orders.id) FROM users
+LEFT JOIN orders ON users.id = orders.user_id
+GROUP BY users.name
+HAVING COUNT(orders.id) > $1
+-- args: [5]
+```
+</Tab>
+</Tabs>
+
+## Subquery
+
+<Tabs items={["Dew", "SQL"]}>
+<Tab value="Dew">
+```go
+users, err := Users.From(db).
+    Where(Users.ID.InSub(
+        Orders.From(db).Select(Orders.UserID).Where(Orders.Total.Gt(100)),
+    )).
+    All(ctx)
+```
+</Tab>
+<Tab value="SQL">
+```sql
+SELECT * FROM users
+WHERE users.id IN (
+    SELECT orders.user_id FROM orders WHERE orders.total > $1
+)
+-- args: [100]
+```
+</Tab>
+</Tabs>
+
+## JSONB containment
+
+<Tabs items={["Dew", "SQL"]}>
+<Tab value="Dew">
+```go
+users, err := Users.From(db).
+    Where(Users.Profile.Contains(&Profile{"role": "admin"})).
+    All(ctx)
+```
+</Tab>
+<Tab value="SQL">
+```sql
+SELECT * FROM users
+WHERE users.profile @> $1::jsonb
+-- args: [{"role":"admin"}]
+```
+</Tab>
+</Tabs>
+
+## Transaction
+
+<Tabs items={["Dew", "SQL"]}>
+<Tab value="Dew">
+```go
+tx, _ := db.BeginTx(ctx, nil)
+
+Users.Insert(tx).
+    Columns(Users.Name).
+    Values("Alice").
+    Exec(ctx)
+
+Users.Update(tx).
+    Set(Users.Role, "admin").
+    Where(Users.Name.Eq("Alice")).
+    Exec(ctx)
+
+tx.Commit()
+```
+</Tab>
+<Tab value="SQL">
+```sql
+BEGIN;
+
+INSERT INTO users (name) VALUES ($1);
+-- args: ["Alice"]
+
+UPDATE users SET role = $1 WHERE users.name = $2;
+-- args: ["admin", "Alice"]
+
+COMMIT;
+```
+</Tab>
+</Tabs>
+
+## Dialect differences
+
+The same dew code, different SQL output:
+
+```go
+Users.From(db).Where(Users.ID.Eq(1), Users.Name.Eq("Alice")).ToSql()
+```
+
+| Dialect | Output |
+|---------|--------|
+| PostgreSQL | `SELECT * FROM users WHERE users.id = $1 AND users.name = $2` |
+| MySQL | `SELECT * FROM users WHERE users.id = ? AND users.name = ?` |
+| MSSQL | `SELECT * FROM users WHERE users.id = @p1 AND users.name = @p2` |
+
+Same Go code, zero changes. The dialect handles the rest.

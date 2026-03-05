@@ -1,0 +1,59 @@
+---
+title: Dialects
+description: Supported SQL dialects and placeholder styles.
+---
+
+Dew supports multiple SQL dialects. A dialect controls how query placeholders are rendered.
+
+## Available dialects
+
+| Dialect | Struct | Placeholders | Example |
+|---------|--------|-------------|---------|
+| PostgreSQL | `dew.PostgreSQLDialect{}` | `$1, $2, $3` | `WHERE id = $1` |
+| MySQL | `dew.MySQLDialect{}` | `?, ?, ?` | `WHERE id = ?` |
+| SQLite | `dew.SQLiteDialect{}` | `?, ?, ?` | `WHERE id = ?` |
+| MSSQL | `dew.MSSQLDialect{}` | `@p1, @p2, @p3` | `WHERE id = @p1` |
+
+## Usage
+
+Pass a dialect when opening a connection:
+
+```go
+db, err := dew.Open("postgres", dsn, dew.PostgreSQLDialect{})
+```
+
+And when defining schemas:
+
+```go
+var Users = dew.DefineSchema("users", dew.PostgreSQLDialect{}, func(t dew.Table[User]) struct {
+    // ...
+})
+```
+
+## The Dialect interface
+
+```go
+type Dialect interface {
+    Placeholder(index int) string
+}
+```
+
+The `index` is zero-based. PostgreSQL's `Placeholder(0)` returns `"$1"`, `Placeholder(1)` returns `"$2"`, etc.
+
+## Custom dialects
+
+Implement the `Dialect` interface to support other databases:
+
+```go
+type OracleDialect struct{}
+
+func (d OracleDialect) Placeholder(index int) string {
+    return fmt.Sprintf(":p%d", index+1)
+}
+```
+
+Then use it like any built-in dialect:
+
+```go
+db, err := dew.Open("oracle", dsn, OracleDialect{})
+```

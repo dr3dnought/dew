@@ -1,0 +1,179 @@
+---
+title: JSONB
+description: Type-safe PostgreSQL JSONB columns.
+---
+
+Dew supports PostgreSQL JSONB columns with type-safe operators via `JSONBColumn[T]`.
+
+## Define a JSONB column
+
+JSONB column types must implement `sql.Scanner` and `driver.Valuer` (the `dew.JSONB` constraint). Due to a Go generics limitation, JSONB columns use a standalone function instead of a table method:
+
+```go
+type Settings struct {
+    Theme string `json:"theme"`
+    Lang  string `json:"lang"`
+}
+
+func (s *Settings) Scan(src any) error {
+    switch v := src.(type) {
+    case []byte:  return json.Unmarshal(v, s)
+    case string:  return json.Unmarshal([]byte(v), s)
+    default:      return fmt.Errorf("unsupported type %T", src)
+    }
+}
+
+func (s Settings) Value() (driver.Value, error) {
+    return json.Marshal(s)
+}
+```
+
+Then define the column in your schema:
+
+```go
+var Users = dew.DefineSchema("users", dew.PostgreSQLDialect{}, func(t dew.Table[User]) struct {
+    dew.Table[User]
+    ID       dew.IntColumn
+    Name     dew.StringColumn
+    Settings dew.JSONBColumn[*Settings]
+} {
+    return struct {
+        dew.Table[User]
+        ID       dew.IntColumn
+        Name     dew.StringColumn
+        Settings dew.JSONBColumn[*Settings]
+    }{
+        Table:    t,
+        ID:       t.IntColumn("id"),
+        Name:     t.StringColumn("name"),
+        Settings: dew.DefineJSONBColumn[*Settings](t, "settings"),
+    }
+})
+```
+
+## Containment
+
+### Contains (`@>`)
+
+```go
+// WHERE settings @> '{"theme":"dark"}'::jsonb
+users, err := Users.From(db).
+    Where(Users.Settings.Contains(&Settings{Theme: "dark"})).
+    All()
+```
+
+### ContainedBy (`<@`)
+
+```go
+// WHERE settings <@ '{"theme":"dark","lang":"en"}'::jsonb
+users, err := Users.From(db).
+    Where(Users.Settings.ContainedBy(&Settings{Theme: "dark", Lang: "en"})).
+    All()
+```
+
+## Key existence
+
+### HasKey (`?`)
+
+```go
+// WHERE settings ? 'theme'
+users, err := Users.From(db).
+    Where(Users.Settings.HasKey("theme")).
+    All()
+```
+
+### HasAnyKey (`?|`)
+
+```go
+// WHERE settings ?| ARRAY['theme', 'lang']
+users, err := Users.From(db).
+    Where(Users.Settings.HasAnyKey("theme", "lang")).
+    All()
+```
+
+### HasAllKeys (`?&`)
+
+```go
+// WHERE settings ?& ARRAY['theme', 'lang']
+users, err := Users.From(db).
+    Where(Users.Settings.HasAllKeys("theme", "lang")).
+    All()
+```
+
+## Equality
+
+```go
+// WHERE settings = '...'::jsonb
+users, err := Users.From(db).
+    Where(Users.Settings.Eq(&Settings{Theme: "dark", Lang: "en"})).
+    All()
+
+// WHERE settings != '...'::jsonb
+users, err := Users.From(db).
+    Where(Users.Settings.NotEq(&Settings{Theme: "light"})).
+    All()
+```
+
+## Path navigation
+
+### Path (`->`)
+
+Navigate into nested JSON keys. Returns a `JSONBColumn` for further chaining:
+
+```go
+// WHERE settings->'nested' @> '{"key":"value"}'::jsonb
+users, err := Users.From(db).
+    Where(Users.Settings.Path("nested").Contains(&Settings{...})).
+    All()
+```
+
+### PathText (`->>`)
+
+Extract a value as text. Returns a column usable in SELECT:
+
+```go
+// SELECT name, settings->>'theme' FROM users
+users, err := Users.From(db).
+    Select(Users.Name, Users.Settings.PathText("theme")).
+    All()
+```
+
+### Deep paths
+
+Chain `Path` for deep navigation, then use `PathText` for the final key:
+
+```go
+// settings->'address'->'geo'->>'lat'
+Users.Settings.Path("address", "geo").PathText("lat")
+
+// settings->'address' @> '{"city":"Portland"}'
+Users.Settings.Path("address").Contains(...)
+```
+
+## Null checks
+
+```go
+users, err := Users.From(db).
+    Where(Users.Settings.IsNull()).
+    All()
+
+users, err := Users.From(db).
+    Where(Users.Settings.IsNotNull()).
+    All()
+```
+
+## Composing with And/Or
+
+JSONB expressions compose like any other expression:
+
+```go
+users, err := Users.From(db).
+    Where(dew.And(
+        Users.Settings.HasKey("theme"),
+        dew.Or(
+            Users.Settings.Contains(&Settings{Theme: "dark"}),
+            Users.Settings.Contains(&Settings{Theme: "light"}),
+        ),
+    )).
+    All()
+```

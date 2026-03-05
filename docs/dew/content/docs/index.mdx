@@ -1,0 +1,129 @@
+---
+title: Getting Started
+description: Install dew and write your first query.
+---
+
+Dew is a lightweight, type-safe query builder for Go. It uses generics (Go 1.24+) to give you compile-time safety without code generation.
+
+## Philosophy
+
+Dew is not an ORM — it's a query builder that's expressive enough to **replace the repository layer entirely**. Instead of wrapping queries behind repository interfaces, you write them inline where you need them:
+
+```go
+// No repo. No interface. Just a query.
+user, err := Users.From(db).Where(Users.Email.Eq(email)).One(ctx)
+```
+
+Traditional repository layers add indirection without adding safety — you still write SQL-shaped code inside them. Dew gives you type-safe, composable queries that read like SQL, so the repo abstraction becomes unnecessary overhead.
+
+Since every builder accepts `dew.Querier` (satisfied by both `*DB` and `*Tx`), you get transaction support for free — pass `tx` instead of `db`, same code, no wrapper needed:
+
+```go
+func CreateOrder(q dew.Querier, ctx context.Context, userID int, total float64) error {
+    // This works with db or tx — the caller decides
+    return Orders.Insert(q).
+        Columns(Orders.UserID, Orders.Total).
+        Values(userID, total).
+        Exec(ctx)
+}
+```
+
+<Callout type="info">
+You *can* still use a repository layer if your project demands it — dew doesn't prevent it. But you probably don't need one.
+</Callout>
+
+## Install
+
+```bash
+go get github.com/dr3dnought/dew
+```
+
+## Connect
+
+```go
+import (
+    "github.com/dr3dnought/dew"
+    _ "github.com/lib/pq" // or your driver
+)
+
+db, err := dew.Open("postgres", "postgres://user:pass@localhost/mydb?sslmode=disable", dew.PostgreSQLDialect{})
+if err != nil {
+    log.Fatal(err)
+}
+defer db.Close()
+```
+
+## Define a schema
+
+Dew uses a schema definition to map Go structs to database tables. The schema provides typed columns for building queries.
+
+```go
+type User struct {
+    ID    int    `db:"id"`
+    Name  string `db:"name"`
+    Email string `db:"email"`
+}
+
+var Users = dew.DefineSchema("users", dew.PostgreSQLDialect{}, func(t dew.Table[User]) struct {
+    dew.Table[User]
+    ID    dew.IntColumn
+    Name  dew.StringColumn
+    Email dew.StringColumn
+} {
+    return struct {
+        dew.Table[User]
+        ID    dew.IntColumn
+        Name  dew.StringColumn
+        Email dew.StringColumn
+    }{
+        Table: t,
+        ID:    t.IntColumn("id"),
+        Name:  t.StringColumn("name"),
+        Email: t.StringColumn("email"),
+    }
+})
+```
+
+## Your first query
+
+```go
+// SELECT
+users, err := Users.From(db).
+    Where(Users.Name.Eq("Alice")).
+    All()
+
+// INSERT
+err = Users.Insert(db).
+    Columns(Users.Name, Users.Email).
+    Values("Alice", "alice@example.com").
+    Exec()
+
+// UPDATE
+err = Users.Update(db).
+    Set(Users.Name, "Bob").
+    Where(Users.ID.Eq(1)).
+    Exec()
+
+// DELETE
+err = Users.Delete(db).
+    Where(Users.ID.Eq(1)).
+    Exec()
+```
+
+## Supported dialects
+
+Dew supports multiple SQL dialects out of the box:
+
+- `dew.PostgreSQLDialect{}` — `$1, $2, ...`
+- `dew.MySQLDialect{}` — `?, ?, ...`
+- `dew.SQLiteDialect{}` — `?, ?, ...`
+- `dew.MSSQLDialect{}` — `@p1, @p2, ...`
+
+## What's next
+
+<Cards>
+  <Card title="Schema" href="/docs/schema" />
+  <Card title="SELECT queries" href="/docs/select" />
+  <Card title="Transactions" href="/docs/transactions" />
+  <Card title="JSONB columns" href="/docs/jsonb" />
+</Cards>
