@@ -1,7 +1,7 @@
 # Dew
 
 [![CI](https://github.com/dr3dnought/dew/actions/workflows/ci.yml/badge.svg)](https://github.com/dr3dnought/dew/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/dr3dnought/dew/branch/main/graph/badge.svg)](https://codecov.io/gh/dr3dnought/dew)
+[![codecov](https://codecov.io/gh/dr3dnought/dew/branch/dev/graph/badge.svg)](https://codecov.io/gh/dr3dnought/dew)
 [![Go Reference](https://pkg.go.dev/badge/github.com/dr3dnought/dew.svg)](https://pkg.go.dev/github.com/dr3dnought/dew)
 [![Go Report Card](https://goreportcard.com/badge/github.com/dr3dnought/dew)](https://goreportcard.com/report/github.com/dr3dnought/dew)
 
