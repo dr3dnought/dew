@@ -242,8 +242,7 @@ func TestSelector_SubqueryExpr(t *testing.T) {
 		)).
 		ToSql()
 
-	// Selector.Sql() wraps in parens, and InSub wraps in IN (...), so double parens
-	wantSQL := "SELECT * FROM users WHERE users.id IN ((SELECT users.id FROM users WHERE users.age > $1))"
+	wantSQL := "SELECT * FROM users WHERE users.id IN (SELECT users.id FROM users WHERE users.age > $1)"
 	wantArgs := []any{21}
 
 	if sql != wantSQL {
@@ -696,6 +695,248 @@ func TestDeletor_Clone(t *testing.T) {
 
 	if baseSql == cloneSql {
 		t.Errorf("clone mutation affected base: both = %q", baseSql)
+	}
+}
+
+// ─── CTE ─────────────────────────────────────────────────────
+
+func TestSelector_CTE_Basic(t *testing.T) {
+	sub := testTable.From(pgDB).Select(tID, tName).Where(tAge.Gt(18))
+	sql, args := From[testUser](pgDB, TableRef("adults")).
+		With(CTE("adults", sub)).
+		Where(Raw("adults.name = ?", "Alice")).
+		ToSql()
+
+	wantSQL := "WITH adults AS (SELECT users.id, users.name FROM users WHERE users.age > $1) SELECT * FROM adults WHERE adults.name = $2"
+	wantArgs := []any{18, "Alice"}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+func TestSelector_CTE_Recursive(t *testing.T) {
+	base := Raw("SELECT 1 AS n")
+	recursive := Raw("SELECT n + 1 FROM nums WHERE n < ?", 10)
+	cteBody := Union[struct{ N int }](pgDB, base, recursive)
+
+	sql, args := From[struct{ N int }](pgDB, TableRef("nums")).
+		With(RecursiveCTE("nums", cteBody)).
+		ToSql()
+
+	wantSQL := "WITH RECURSIVE nums AS ((SELECT 1 AS n) UNION (SELECT n + 1 FROM nums WHERE n < $1)) SELECT * FROM nums"
+	wantArgs := []any{10}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+func TestSelector_CTE_MultipleArgs(t *testing.T) {
+	cte1 := testTable.From(pgDB).Where(tAge.Gt(18))
+	cte2 := testTable.From(pgDB).Where(tName.Eq("Bob"))
+
+	sql, args := From[testUser](pgDB, TableRef("a")).
+		With(CTE("a", cte1), CTE("b", cte2)).
+		Where(Raw("1=1")).
+		ToSql()
+
+	wantSQL := "WITH a AS (SELECT * FROM users WHERE users.age > $1), b AS (SELECT * FROM users WHERE users.name = $2) SELECT * FROM a WHERE 1=1"
+	wantArgs := []any{18, "Bob"}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+// ─── Subquery FROM ───────────────────────────────────────────
+
+func TestSelector_FromSub(t *testing.T) {
+	sub := testTable.From(pgDB).Select(tName, tAge).Where(tAge.Gt(21))
+	sql, args := FromSub[testUser](pgDB, sub, "sub").
+		Where(Raw("sub.age < ?", 30)).
+		ToSql()
+
+	wantSQL := "SELECT * FROM (SELECT users.name, users.age FROM users WHERE users.age > $1) AS sub WHERE sub.age < $2"
+	wantArgs := []any{21, 30}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+// ─── UNION / INTERSECT / EXCEPT ──────────────────────────────
+
+func TestSetQuery_Union(t *testing.T) {
+	left := testTable.From(pgDB).Select(tName).Where(tAge.Gt(18))
+	right := testTable.From(pgDB).Select(tName).Where(tName.Eq("Admin"))
+
+	sql, args := Union[testUser](pgDB, left, right).ToSql()
+
+	wantSQL := "(SELECT users.name FROM users WHERE users.age > $1) UNION (SELECT users.name FROM users WHERE users.name = $2)"
+	wantArgs := []any{18, "Admin"}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+func TestSetQuery_UnionAll(t *testing.T) {
+	left := testTable.From(pgDB).Select(tName).Where(tAge.Gt(18))
+	right := testTable.From(pgDB).Select(tName).Where(tAge.Lt(5))
+
+	sql, args := UnionAll[testUser](pgDB, left, right).ToSql()
+
+	wantSQL := "(SELECT users.name FROM users WHERE users.age > $1) UNION ALL (SELECT users.name FROM users WHERE users.age < $2)"
+	wantArgs := []any{18, 5}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+func TestSetQuery_Intersect(t *testing.T) {
+	left := testTable.From(pgDB).Select(tName).Where(tAge.Gt(18))
+	right := testTable.From(pgDB).Select(tName).Where(tName.Eq("Alice"))
+
+	sql, args := Intersect[testUser](pgDB, left, right).ToSql()
+
+	wantSQL := "(SELECT users.name FROM users WHERE users.age > $1) INTERSECT (SELECT users.name FROM users WHERE users.name = $2)"
+	wantArgs := []any{18, "Alice"}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+func TestSetQuery_Except(t *testing.T) {
+	left := testTable.From(pgDB).Select(tName).Where(tAge.Gt(18))
+	right := testTable.From(pgDB).Select(tName).Where(tName.Eq("Admin"))
+
+	sql, args := Except[testUser](pgDB, left, right).ToSql()
+
+	wantSQL := "(SELECT users.name FROM users WHERE users.age > $1) EXCEPT (SELECT users.name FROM users WHERE users.name = $2)"
+	wantArgs := []any{18, "Admin"}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+func TestSetQuery_UnionChain(t *testing.T) {
+	q1 := testTable.From(pgDB).Select(tName).Where(tAge.Gt(18))
+	q2 := testTable.From(pgDB).Select(tName).Where(tAge.Lt(5))
+	q3 := testTable.From(pgDB).Select(tName).Where(tName.Eq("Admin"))
+
+	sql, args := Union[testUser](pgDB, q1, q2).UnionAll(q3).ToSql()
+
+	wantSQL := "(SELECT users.name FROM users WHERE users.age > $1) UNION (SELECT users.name FROM users WHERE users.age < $2) UNION ALL (SELECT users.name FROM users WHERE users.name = $3)"
+	wantArgs := []any{18, 5, "Admin"}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+func TestSetQuery_OrderByLimitOffset(t *testing.T) {
+	left := testTable.From(pgDB).Select(tName).Where(tAge.Gt(18))
+	right := testTable.From(pgDB).Select(tName).Where(tAge.Lt(5))
+
+	sql, args := UnionAll[testUser](pgDB, left, right).
+		OrderBy(Asc(Raw("name"))).
+		Limit(10).
+		Offset(5).
+		ToSql()
+
+	wantSQL := "(SELECT users.name FROM users WHERE users.age > $1) UNION ALL (SELECT users.name FROM users WHERE users.age < $2) ORDER BY name ASC LIMIT 10 OFFSET 5"
+	wantArgs := []any{18, 5}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+func TestSetQuery_AsCTEBody(t *testing.T) {
+	left := testTable.From(pgDB).Select(tName, tAge).Where(tAge.Gt(18))
+	right := testTable.From(pgDB).Select(tName, tAge).Where(tName.Eq("Admin"))
+	combined := Union[testUser](pgDB, left, right)
+
+	sql, args := From[testUser](pgDB, TableRef("combined")).
+		With(CTE("combined", combined)).
+		Where(Raw("combined.age > ?", 25)).
+		ToSql()
+
+	wantSQL := "WITH combined AS ((SELECT users.name, users.age FROM users WHERE users.age > $1) UNION (SELECT users.name, users.age FROM users WHERE users.name = $2)) SELECT * FROM combined WHERE combined.age > $3"
+	wantArgs := []any{18, "Admin", 25}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+func TestSelector_CTE_NoArgs(t *testing.T) {
+	sub := testTable.From(pgDB).Select(tID, tName)
+	sql, args := From[testUser](pgDB, TableRef("all_users")).
+		With(CTE("all_users", sub)).
+		ToSql()
+
+	wantSQL := "WITH all_users AS (SELECT users.id, users.name FROM users) SELECT * FROM all_users"
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if len(args) != 0 {
+		t.Errorf("args = %v, want empty", args)
+	}
+}
+
+func TestSetQuery_MySQL(t *testing.T) {
+	left := testTable.From(myDB).Select(tName).Where(tAge.Gt(18))
+	right := testTable.From(myDB).Select(tName).Where(tName.Eq("Admin"))
+
+	sql, args := Union[testUser](myDB, left, right).ToSql()
+
+	wantSQL := "(SELECT users.name FROM users WHERE users.age > ?) UNION (SELECT users.name FROM users WHERE users.name = ?)"
+	wantArgs := []any{18, "Admin"}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
 	}
 }
 

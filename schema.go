@@ -4,6 +4,14 @@ type Tabler interface {
 	TableName() string
 }
 
+type tableRef string
+
+func (t tableRef) TableName() string { return string(t) }
+
+// TableRef creates a Tabler reference for use with CTEs or other named sources.
+func TableRef(name string) Tabler { return tableRef(name) }
+
+
 type Table[T any] struct {
 	name string
 }

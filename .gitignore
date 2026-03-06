@@ -57,5 +57,12 @@ dist/
 build/
 *.egg-info/
 
+docs/dew/.next
+docs/dew/.source
+docs/dew/node_modules
+docs/dew/next-env.d.test
+docs/dew/.gitignore
+
+
 # Docker
 docker-compose.yml

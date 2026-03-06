@@ -28,8 +28,13 @@ type Selector[T any] struct {
 	db        Querier
 	tableName string
 	columns   []Column
-	wheres    []string
-	args      []any
+	whereExprs []Expression
+	args       []any
+
+	ctes []cteClause
+
+	fromSubQuery Expression
+	fromAlias    string
 
 	distinctColumns []Column
 
@@ -50,10 +55,18 @@ func From[T any](db Querier, schema Tabler) *Selector[T] {
 	}
 }
 
+func FromSub[T any](db Querier, subQuery Expression, alias string) *Selector[T] {
+	return &Selector[T]{
+		db:           db,
+		fromSubQuery: subQuery,
+		fromAlias:    alias,
+	}
+}
+
 // **** Implementations of the Expression interface **** //
 
 func (s *Selector[T]) Sql() string {
-	return "(" + s.buildQuery() + ")"
+	return s.buildRawQuery()
 }
 
 func (s *Selector[T]) Args() []any {
@@ -63,16 +76,16 @@ func (s *Selector[T]) Args() []any {
 // *** SELECTOR *** ///
 
 func (s *Selector[T]) Where(expr ...Expression) *Selector[T] {
-	argOffset := len(s.args)
 	for _, exp := range expr {
-		sql := exp.Sql()
-		if sql != "" {
-			sql = replacePlaceholders(sql, s.db.getDialect(), argOffset)
-			s.wheres = append(s.wheres, sql)
-			s.args = append(s.args, exp.Args()...)
-			argOffset += len(exp.Args())
+		if exp.Sql() != "" {
+			s.whereExprs = append(s.whereExprs, exp)
 		}
 	}
+	return s
+}
+
+func (s *Selector[T]) With(ctes ...cteClause) *Selector[T] {
+	s.ctes = append(s.ctes, ctes...)
 	return s
 }
 
@@ -147,10 +160,17 @@ func (s *Selector[T]) ToSql() (string, []any) {
 
 func (s *Selector[T]) Clone() *Selector[T] {
 	clone := &Selector[T]{
-		db:          s.db,
-		tableName:   s.tableName,
-		limitCount:  s.limitCount,
-		offsetCount: s.offsetCount,
+		db:           s.db,
+		tableName:    s.tableName,
+		fromSubQuery: s.fromSubQuery,
+		fromAlias:    s.fromAlias,
+		limitCount:   s.limitCount,
+		offsetCount:  s.offsetCount,
+	}
+
+	if s.ctes != nil {
+		clone.ctes = make([]cteClause, len(s.ctes))
+		copy(clone.ctes, s.ctes)
 	}
 
 	if s.columns != nil {
@@ -158,14 +178,9 @@ func (s *Selector[T]) Clone() *Selector[T] {
 		copy(clone.columns, s.columns)
 	}
 
-	if s.wheres != nil {
-		clone.wheres = make([]string, len(s.wheres))
-		copy(clone.wheres, s.wheres)
-	}
-
-	if s.args != nil {
-		clone.args = make([]any, len(s.args))
-		copy(clone.args, s.args)
+	if s.whereExprs != nil {
+		clone.whereExprs = make([]Expression, len(s.whereExprs))
+		copy(clone.whereExprs, s.whereExprs)
 	}
 
 	if s.distinctColumns != nil {
@@ -460,10 +475,29 @@ func (s *Selector[T]) scanIntoOne(rows *sql.Rows, dest any) error {
 
 // * Utils Functions * //
 
-func (s *Selector[T]) buildQuery() string {
-	baseArgs := make([]any, len(s.args))
-	copy(baseArgs, s.args)
-	finalArgs := baseArgs
+// buildRawQuery builds the query with ? placeholders (no dialect replacement).
+// It collects all args and stores them in s.args.
+func (s *Selector[T]) buildRawQuery() string {
+	var finalArgs []any
+
+	// CTE prefix
+	var ctePrefix string
+	if len(s.ctes) > 0 {
+		var cteParts []string
+		hasRecursive := false
+		for _, cte := range s.ctes {
+			if cte.recursive {
+				hasRecursive = true
+			}
+			cteParts = append(cteParts, cte.name+" AS ("+cte.query.Sql()+")")
+			finalArgs = append(finalArgs, cte.query.Args()...)
+		}
+		keyword := "WITH "
+		if hasRecursive {
+			keyword = "WITH RECURSIVE "
+		}
+		ctePrefix = keyword + strings.Join(cteParts, ", ") + " "
+	}
 
 	selectClause := "*"
 	if len(s.columns) > 0 {
@@ -510,7 +544,15 @@ func (s *Selector[T]) buildQuery() string {
 		}
 	}
 
-	query := fmt.Sprintf("SELECT %s%s FROM %s", distinctClause, selectClause, s.tableName)
+	var fromClause string
+	if s.fromSubQuery != nil {
+		fromClause = "(" + s.fromSubQuery.Sql() + ") AS " + s.fromAlias
+		finalArgs = append(finalArgs, s.fromSubQuery.Args()...)
+	} else {
+		fromClause = s.tableName
+	}
+
+	query := ctePrefix + fmt.Sprintf("SELECT %s%s FROM %s", distinctClause, selectClause, fromClause)
 
 	for _, join := range s.joins {
 		query += fmt.Sprintf(" %s %s ON %s = %s",
@@ -521,8 +563,13 @@ func (s *Selector[T]) buildQuery() string {
 		)
 	}
 
-	if len(s.wheres) > 0 {
-		query += " WHERE " + strings.Join(s.wheres, " AND ")
+	if len(s.whereExprs) > 0 {
+		var whereSqls []string
+		for _, expr := range s.whereExprs {
+			whereSqls = append(whereSqls, expr.Sql())
+			finalArgs = append(finalArgs, expr.Args()...)
+		}
+		query += " WHERE " + strings.Join(whereSqls, " AND ")
 	}
 
 	if len(s.groupBys) > 0 {
@@ -549,26 +596,18 @@ func (s *Selector[T]) buildQuery() string {
 
 	if len(s.havings) > 0 {
 		var havingSqls []string
-		argOffset := len(finalArgs)
 		for _, having := range s.havings {
-			sqlStr := having.Sql()
-			sqlStr = replacePlaceholders(sqlStr, s.db.getDialect(), argOffset)
-			havingSqls = append(havingSqls, sqlStr)
+			havingSqls = append(havingSqls, having.Sql())
 			finalArgs = append(finalArgs, having.Args()...)
-			argOffset += len(having.Args())
 		}
 		query += " HAVING " + strings.Join(havingSqls, " AND ")
 	}
 
 	if len(s.orderBys) > 0 {
 		var orderSqls []string
-		argOffset := len(finalArgs)
 		for _, order := range s.orderBys {
-			sqlStr := order.Sql()
-			sqlStr = replacePlaceholders(sqlStr, s.db.getDialect(), argOffset)
-			orderSqls = append(orderSqls, sqlStr)
+			orderSqls = append(orderSqls, order.Sql())
 			finalArgs = append(finalArgs, order.Args()...)
-			argOffset += len(order.Args())
 		}
 		query += " ORDER BY " + strings.Join(orderSqls, ", ")
 	}
@@ -583,6 +622,12 @@ func (s *Selector[T]) buildQuery() string {
 	s.args = finalArgs
 
 	return query
+}
+
+// buildQuery builds the final query with dialect-specific placeholders.
+func (s *Selector[T]) buildQuery() string {
+	raw := s.buildRawQuery()
+	return replacePlaceholders(raw, s.db.getDialect(), 0)
 }
 
 func buildFieldMap(typ reflect.Type) map[string]int {
