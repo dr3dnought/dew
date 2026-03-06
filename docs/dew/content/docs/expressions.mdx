@@ -1,0 +1,131 @@
+---
+title: Expressions
+description: Raw SQL, operators, and aggregate functions.
+---
+
+Expressions are the building blocks of WHERE, HAVING, ORDER BY, and SET clauses. Any value implementing the `Expression` interface can be used:
+
+```go
+type Expression interface {
+    Sql() string
+    Args() []any
+}
+```
+
+## Raw expressions
+
+Use `dew.Raw()` for arbitrary SQL:
+
+```go
+// In WHERE
+users, err := Users.From(db).
+    Where(dew.Raw("age > ? AND name != ?", 18, "Admin")).
+    All()
+
+// In SET
+err := Users.Update(db).
+    Set(Users.Age, dew.Raw("age + ?", 1)).
+    Where(Users.ID.Eq(1)).
+    Exec()
+
+// Force update/delete all
+err := Users.Update(db).
+    Set(Users.Name, "Bob").
+    Where(dew.Raw("1=1")).
+    Exec()
+```
+
+## Boolean operators
+
+### And
+
+```go
+dew.And(
+    Users.Age.Gte(18),
+    Users.Name.NotEq("Admin"),
+)
+// (users.age >= $1 AND users.name != $2)
+```
+
+### Or
+
+```go
+dew.Or(
+    Users.Name.Eq("Alice"),
+    Users.Name.Eq("Bob"),
+)
+// (users.name = $1 OR users.name = $2)
+```
+
+### Nesting
+
+```go
+dew.And(
+    Users.Age.Gte(18),
+    dew.Or(
+        Users.Name.Eq("Alice"),
+        Users.Name.Eq("Bob"),
+    ),
+)
+// (users.age >= $1 AND (users.name = $2 OR users.name = $3))
+```
+
+## Ordering
+
+```go
+dew.Asc(Users.Name)   // users.name ASC
+dew.Desc(Users.Age)   // users.age DESC
+```
+
+Used with `.OrderBy()`:
+
+```go
+Users.From(db).OrderBy(dew.Desc(Users.Age), dew.Asc(Users.Name))
+```
+
+## Aggregate functions
+
+```go
+dew.Count()          // COUNT(*)
+dew.Count(Users.ID)  // COUNT(users.id)
+dew.Sum(Users.Age)   // SUM(users.age)
+dew.Avg(Users.Age)   // AVG(users.age)
+dew.Max(Users.Age)   // MAX(users.age)
+dew.Min(Users.Age)   // MIN(users.age)
+```
+
+Used with `.Select()`:
+
+```go
+Users.From(db).
+    Select(Users.Name, dew.Count()).
+    GroupBy(Users.Name).
+    All()
+```
+
+## Aliases
+
+Use `dew.As()` to alias any expression:
+
+```go
+total := dew.As(dew.Sum(Users.Age), "total_age")
+
+Users.From(db).
+    Select(Users.Name, total).
+    GroupBy(Users.Name).
+    All()
+// SELECT users.name, SUM(users.age) AS total_age FROM users GROUP BY users.name
+```
+
+## Placeholder handling
+
+Dew uses `?` as the universal placeholder. Each dialect replaces it automatically:
+
+| Dialect | Placeholder |
+|---------|-------------|
+| PostgreSQL | `$1, $2, ...` |
+| MySQL | `?, ?, ...` |
+| SQLite | `?, ?, ...` |
+| MSSQL | `@p1, @p2, ...` |
+
+Use `??` to escape a literal `?` (needed for PostgreSQL JSONB operators like `?`, `?|`, `?&`).

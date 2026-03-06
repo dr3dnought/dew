@@ -1,0 +1,240 @@
+---
+title: Common Patterns
+description: Bulk operations, conditional queries, and other real-world patterns.
+---
+
+Practical patterns you'll use daily with dew.
+
+## Bulk insert
+
+```go
+insertor := Users.Insert(db).
+    Columns(Users.Name, Users.Email)
+
+for _, u := range usersToCreate {
+    insertor = insertor.Values(u.Name, u.Email)
+}
+
+err := insertor.Exec(ctx)
+```
+
+## Bulk insert with models
+
+```go
+err := Users.Insert(db).
+    Models(user1, user2, user3).
+    Exec(ctx)
+```
+
+## Upsert (insert or update)
+
+```go
+err := Users.Insert(db).
+    Columns(Users.Name, Users.Email, Users.Role).
+    Values("Alice", "alice@example.com", "admin").
+    OnConflict(Users.Email).
+    SetUpdate(Users.Role, "admin").
+    Exec(ctx)
+```
+
+## Soft delete pattern
+
+```go
+type User struct {
+    ID        int        `db:"id"`
+    Name      string     `db:"name"`
+    DeletedAt *time.Time `db:"deleted_at"`
+}
+
+// "Delete" = set deleted_at
+func SoftDelete(q dew.Querier, ctx context.Context, id int) error {
+    return Users.Update(q).
+        Set(Users.DeletedAt, time.Now()).
+        Where(Users.ID.Eq(id)).
+        Exec(ctx)
+}
+
+// Queries always filter out deleted
+func ActiveUsers(q dew.Querier, ctx context.Context) ([]*User, error) {
+    return Users.From(q).
+        Where(Users.DeletedAt.IsNull()).
+        All(ctx)
+}
+```
+
+## Conditional query building
+
+Build queries dynamically based on input:
+
+```go
+func ListUsers(q dew.Querier, ctx context.Context, sortBy string, desc bool, limit int) ([]*User, error) {
+    query := Users.From(q)
+
+    // Dynamic sort
+    var orderExpr dew.Expression
+    switch sortBy {
+    case "name":
+        if desc {
+            orderExpr = dew.Desc(Users.Name)
+        } else {
+            orderExpr = dew.Asc(Users.Name)
+        }
+    case "age":
+        if desc {
+            orderExpr = dew.Desc(Users.Age)
+        } else {
+            orderExpr = dew.Asc(Users.Age)
+        }
+    default:
+        orderExpr = dew.Desc(Users.CreatedAt)
+    }
+
+    query = query.OrderBy(orderExpr)
+
+    if limit > 0 {
+        query = query.Limit(limit)
+    }
+
+    return query.All(ctx)
+}
+```
+
+## Subquery: users with orders
+
+```go
+type Order struct {
+    ID     int `db:"id"`
+    UserID int `db:"user_id"`
+}
+
+var Orders = dew.DefineSchema("orders", dew.PostgreSQLDialect{}, func(t dew.Table[Order]) struct {
+    dew.Table[Order]
+    ID     dew.IntColumn
+    UserID dew.IntColumn
+} {
+    return struct {
+        dew.Table[Order]
+        ID     dew.IntColumn
+        UserID dew.IntColumn
+    }{
+        Table:  t,
+        ID:     t.IntColumn("id"),
+        UserID: t.IntColumn("user_id"),
+    }
+})
+
+// Users who have placed at least one order
+usersWithOrders, err := Users.From(db).
+    Where(Users.ID.InSub(
+        Orders.From(db).Select(Orders.UserID),
+    )).
+    All(ctx)
+
+// Users who have NOT placed any order
+usersWithoutOrders, err := Users.From(db).
+    Where(Users.ID.NotInSub(
+        Orders.From(db).Select(Orders.UserID),
+    )).
+    All(ctx)
+```
+
+## Join with select
+
+```go
+// Get users with their order count
+type UserOrderCount struct {
+    Name       string `db:"name"`
+    OrderCount int    `db:"order_count"`
+}
+
+results, err := Users.From(db).
+    Select(
+        Users.Name,
+        dew.As(dew.Count(Orders.ID), "order_count"),
+    ).
+    LeftJoin(Orders, Users.ID, Orders.UserID).
+    GroupBy(Users.Name).
+    OrderBy(dew.Desc(dew.Raw("order_count"))).
+    All(ctx)
+```
+
+## Clone for branching queries
+
+```go
+// Base query: active adults
+base := Users.From(db).
+    Where(Users.Age.Gte(18), Users.DeletedAt.IsNull())
+
+// Branch 1: admins
+admins, err := base.Clone().
+    Where(Users.Role.Eq("admin")).
+    All(ctx)
+
+// Branch 2: count of regular users
+regularCount, err := base.Clone().
+    Where(Users.Role.Eq("member")).
+    Count(ctx)
+
+// base is untouched
+```
+
+## Insert and return ID
+
+```go
+inserted, err := Users.Insert(db).
+    Columns(Users.Name, Users.Email).
+    Values("Alice", "alice@example.com").
+    Returning(Users.ID, Users.Name, Users.Email).
+    ScanWith(func(rows *sql.Rows) (*User, error) {
+        var u User
+        err := rows.Scan(&u.ID, &u.Name, &u.Email)
+        return &u, err
+    }, ctx)
+
+newUser := inserted[0]
+fmt.Println(newUser.ID) // auto-generated ID
+```
+
+## Batch update with expression
+
+```go
+// Increment age for all users in a list
+err := Users.Update(db).
+    Set(Users.Age, dew.Raw("age + ?", 1)).
+    Where(Users.ID.In(1, 2, 3)).
+    Exec(ctx)
+```
+
+## Transaction with multiple repos
+
+```go
+func CreateUserWithProfile(db *dew.DB, ctx context.Context, name, email, bio string) error {
+    tx, err := db.BeginTx(ctx, nil)
+    if err != nil {
+        return err
+    }
+
+    userRepo := NewUserRepo(tx)
+    profileRepo := NewProfileRepo(tx)
+
+    err = userRepo.Create(ctx, name, email, "member")
+    if err != nil {
+        tx.Rollback()
+        return err
+    }
+
+    user, err := userRepo.GetByEmail(ctx, email)
+    if err != nil {
+        tx.Rollback()
+        return err
+    }
+
+    err = profileRepo.Create(ctx, user.ID, bio)
+    if err != nil {
+        tx.Rollback()
+        return err
+    }
+
+    return tx.Commit()
+}
+```

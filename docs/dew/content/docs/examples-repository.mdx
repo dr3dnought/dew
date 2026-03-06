@@ -1,0 +1,231 @@
+---
+title: Repository Layer
+description: Repository pattern with dew — if you really need one.
+---
+
+<Callout type="warn">
+Dew is designed to **replace** the repository layer, not live inside one. Schemas are already global, type-safe, and composable — wrapping them in a repo interface adds indirection without adding safety. Before reaching for this pattern, consider writing queries inline where you need them.
+</Callout>
+
+That said, some projects require a repository layer for testing or architectural reasons. Here's how to do it properly with dew.
+
+## Schema
+
+```go
+type User struct {
+    ID        int       `db:"id"`
+    Name      string    `db:"name"`
+    Email     string    `db:"email"`
+    Role      string    `db:"role"`
+    Age       int       `db:"age"`
+    CreatedAt time.Time `db:"created_at"`
+}
+
+var Users = dew.DefineSchema("users", dew.PostgreSQLDialect{}, func(t dew.Table[User]) struct {
+    dew.Table[User]
+    ID        dew.IntColumn
+    Name      dew.StringColumn
+    Email     dew.StringColumn
+    Role      dew.StringColumn
+    Age       dew.IntColumn
+    CreatedAt dew.TimeColumn
+} {
+    return struct {
+        dew.Table[User]
+        ID        dew.IntColumn
+        Name      dew.StringColumn
+        Email     dew.StringColumn
+        Role      dew.StringColumn
+        Age       dew.IntColumn
+        CreatedAt dew.TimeColumn
+    }{
+        Table:     t,
+        ID:        t.IntColumn("id"),
+        Name:      t.StringColumn("name"),
+        Email:     t.StringColumn("email"),
+        Role:      t.StringColumn("role"),
+        Age:       t.IntColumn("age"),
+        CreatedAt: t.TimeColumn("created_at"),
+    }
+})
+```
+
+## Repository
+
+Accept `dew.Querier` — works with both `*dew.DB` and `*dew.Tx`:
+
+```go
+type UserRepo struct {
+    q dew.Querier
+}
+
+func NewUserRepo(q dew.Querier) *UserRepo {
+    return &UserRepo{q: q}
+}
+
+func (r *UserRepo) GetByID(ctx context.Context, id int) (*User, error) {
+    return Users.From(r.q).
+        Where(Users.ID.Eq(id)).
+        One(ctx)
+}
+
+func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*User, error) {
+    return Users.From(r.q).
+        Where(Users.Email.Eq(email)).
+        One(ctx)
+}
+
+func (r *UserRepo) Create(ctx context.Context, name, email, role string) error {
+    return Users.Insert(r.q).
+        Columns(Users.Name, Users.Email, Users.Role).
+        Values(name, email, role).
+        Exec(ctx)
+}
+
+func (r *UserRepo) UpdateRole(ctx context.Context, id int, role string) error {
+    return Users.Update(r.q).
+        Set(Users.Role, role).
+        Where(Users.ID.Eq(id)).
+        Exec(ctx)
+}
+
+func (r *UserRepo) Delete(ctx context.Context, id int) error {
+    return Users.Delete(r.q).
+        Where(Users.ID.Eq(id)).
+        Exec(ctx)
+}
+```
+
+## Pagination
+
+```go
+type Page struct {
+    Limit  int
+    Offset int
+}
+
+func (r *UserRepo) List(ctx context.Context, page Page) ([]*User, int64, error) {
+    base := Users.From(r.q).OrderBy(dew.Desc(Users.CreatedAt))
+
+    total, err := base.Clone().Count(ctx)
+    if err != nil {
+        return nil, 0, err
+    }
+
+    users, err := base.Limit(page.Limit).Offset(page.Offset).All(ctx)
+    if err != nil {
+        return nil, 0, err
+    }
+
+    return users, total, nil
+}
+```
+
+## Search with dynamic filters
+
+```go
+type UserFilter struct {
+    Name   *string
+    Role   *string
+    MinAge *int
+    MaxAge *int
+}
+
+func (r *UserRepo) Search(ctx context.Context, f UserFilter, page Page) ([]*User, error) {
+    q := Users.From(r.q)
+
+    var filters []dew.Expression
+
+    if f.Name != nil {
+        filters = append(filters, Users.Name.ILike("%"+*f.Name+"%"))
+    }
+    if f.Role != nil {
+        filters = append(filters, Users.Role.Eq(*f.Role))
+    }
+    if f.MinAge != nil {
+        filters = append(filters, Users.Age.Gte(*f.MinAge))
+    }
+    if f.MaxAge != nil {
+        filters = append(filters, Users.Age.Lte(*f.MaxAge))
+    }
+
+    if len(filters) > 0 {
+        q = q.Where(filters...)
+    }
+
+    return q.
+        OrderBy(dew.Asc(Users.Name)).
+        Limit(page.Limit).
+        Offset(page.Offset).
+        All(ctx)
+}
+```
+
+## Service with transactions
+
+```go
+type UserService struct {
+    db *dew.DB
+}
+
+func (s *UserService) TransferRole(ctx context.Context, fromID, toID int, role string) error {
+    tx, err := s.db.BeginTx(ctx, nil)
+    if err != nil {
+        return err
+    }
+
+    repo := NewUserRepo(tx)
+
+    // Remove role from source user
+    err = repo.UpdateRole(ctx, fromID, "member")
+    if err != nil {
+        tx.Rollback()
+        return fmt.Errorf("demote user %d: %w", fromID, err)
+    }
+
+    // Assign role to target user
+    err = repo.UpdateRole(ctx, toID, role)
+    if err != nil {
+        tx.Rollback()
+        return fmt.Errorf("promote user %d: %w", toID, err)
+    }
+
+    return tx.Commit()
+}
+```
+
+The key insight: `NewUserRepo(tx)` uses the same repository code, but all queries run inside the transaction. If anything fails, `Rollback()` discards both changes atomically.
+
+## Exists check before insert
+
+```go
+func (r *UserRepo) CreateIfNotExists(ctx context.Context, name, email string) error {
+    exists, err := Users.From(r.q).
+        Where(Users.Email.Eq(email)).
+        Exists(ctx)
+    if err != nil {
+        return err
+    }
+    if exists {
+        return fmt.Errorf("user with email %s already exists", email)
+    }
+
+    return Users.Insert(r.q).
+        Columns(Users.Name, Users.Email).
+        Values(name, email).
+        Exec(ctx)
+}
+```
+
+Or use upsert for the atomic version:
+
+```go
+func (r *UserRepo) Upsert(ctx context.Context, name, email string) error {
+    return Users.Insert(r.q).
+        Columns(Users.Name, Users.Email).
+        Values(name, email).
+        OnConflict(Users.Email).
+        SetUpdate(Users.Name, name).
+        Exec(ctx)
+}
+```

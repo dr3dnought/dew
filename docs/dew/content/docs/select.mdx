@@ -1,0 +1,192 @@
+---
+title: SELECT
+description: Query rows with the Selector builder.
+---
+
+The `Selector` builder constructs SELECT queries. Create one via `Table.From(db)` or `dew.From[T](db, schema)`.
+
+## Basic query
+
+```go
+// SELECT * FROM users
+users, err := Users.From(db).All()
+
+// SELECT * FROM users (single row)
+user, err := Users.From(db).One()
+
+// SELECT * FROM users LIMIT 1
+user, err := Users.From(db).First()
+```
+
+`All()` returns `[]*T`. `One()` and `First()` return `*T` or `dew.ErrNotFound`.
+
+## Select columns
+
+```go
+// SELECT users.name, users.email FROM users
+users, err := Users.From(db).
+    Select(Users.Name, Users.Email).
+    All()
+```
+
+## Where
+
+```go
+// Single condition
+users, err := Users.From(db).
+    Where(Users.Age.Gt(18)).
+    All()
+
+// Multiple conditions (AND)
+users, err := Users.From(db).
+    Where(Users.Age.Gt(18), Users.Name.NotEq("Admin")).
+    All()
+
+// OR
+users, err := Users.From(db).
+    Where(dew.Or(
+        Users.Name.Eq("Alice"),
+        Users.Name.Eq("Bob"),
+    )).
+    All()
+
+// Nested AND/OR
+users, err := Users.From(db).
+    Where(dew.And(
+        Users.Age.Gte(18),
+        dew.Or(
+            Users.Name.Eq("Alice"),
+            Users.Name.Eq("Bob"),
+        ),
+    )).
+    All()
+```
+
+## Order, limit, offset
+
+```go
+users, err := Users.From(db).
+    OrderBy(dew.Desc(Users.Age), dew.Asc(Users.Name)).
+    Limit(10).
+    Offset(20).
+    All()
+```
+
+## Distinct
+
+```go
+// SELECT DISTINCT * FROM users
+users, err := Users.From(db).Distinct().All()
+
+// SELECT DISTINCT users.name, users.email FROM users
+users, err := Users.From(db).Distinct(Users.Name, Users.Email).All()
+```
+
+## Joins
+
+```go
+users, err := Users.From(db).
+    InnerJoin(Orders, Users.ID, Orders.UserID).
+    All()
+
+// Also available: LeftJoin, RightJoin
+```
+
+## Group by and having
+
+```go
+results, err := Users.From(db).
+    Select(Users.Name, dew.Count()).
+    GroupBy(Users.Name).
+    Having(dew.Raw("COUNT(*) > ?", 5)).
+    All()
+```
+
+## Aggregates
+
+```go
+// COUNT
+count, err := Users.From(db).Count()
+
+// EXISTS
+exists, err := Users.From(db).Where(Users.Name.Eq("Alice")).Exists()
+```
+
+Aggregate functions for SELECT:
+
+```go
+dew.Count()          // COUNT(*)
+dew.Count(Users.ID)  // COUNT(users.id)
+dew.Sum(Users.Age)   // SUM(users.age)
+dew.Avg(Users.Age)   // AVG(users.age)
+dew.Max(Users.Age)   // MAX(users.age)
+dew.Min(Users.Age)   // MIN(users.age)
+```
+
+## Subqueries
+
+```go
+// WHERE id IN (SELECT id FROM users WHERE age > 21)
+users, err := Users.From(db).
+    Where(Users.ID.InSub(
+        Users.From(db).Select(Users.ID).Where(Users.Age.Gt(21)),
+    )).
+    All()
+```
+
+## Clone
+
+`Clone()` creates a deep copy of the selector, safe to mutate independently:
+
+```go
+base := Users.From(db).Where(Users.Age.Gt(18))
+admins := base.Clone().Where(Users.Name.Eq("Admin"))
+// base is unchanged
+```
+
+## ToSql
+
+Get the raw SQL and args without executing:
+
+```go
+sql, args := Users.From(db).Where(Users.Name.Eq("Alice")).ToSql()
+// sql:  "SELECT * FROM users WHERE users.name = $1"
+// args: ["Alice"]
+```
+
+## Custom scanning
+
+### Scan
+
+Scan into arbitrary destinations:
+
+```go
+var name string
+err := Users.From(db).Select(Users.Name).Where(Users.ID.Eq(1)).Scan(&name)
+
+var names []string
+err := Users.From(db).Select(Users.Name).Scan(&names)
+```
+
+### ScanWith
+
+Use a custom scanner function:
+
+```go
+users, err := Users.From(db).ScanWith(func(rows *sql.Rows) (*User, error) {
+    var u User
+    err := rows.Scan(&u.ID, &u.Name, &u.Email)
+    return &u, err
+})
+```
+
+## Context
+
+All execution methods accept an optional context:
+
+```go
+users, err := Users.From(db).All(ctx)
+user, err := Users.From(db).One(ctx)
+count, err := Users.From(db).Count(ctx)
+exists, err := Users.From(db).Exists(ctx)
+```

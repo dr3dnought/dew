@@ -1,0 +1,85 @@
+---
+title: DELETE
+description: Delete rows with the Deletor builder.
+---
+
+The `Deletor` builder constructs DELETE queries. Create one via `Table.Delete(db)` or `dew.Delete[T](db, schema)`.
+
+## Basic delete
+
+```go
+err := Users.Delete(db).
+    Where(Users.ID.Eq(1)).
+    Exec()
+// DELETE FROM users WHERE users.id = $1
+```
+
+## Multiple conditions
+
+```go
+err := Users.Delete(db).
+    Where(Users.Name.Eq("Alice"), Users.Age.Lt(18)).
+    Exec()
+// DELETE FROM users WHERE users.name = $1 AND users.age < $2
+```
+
+## Safety: WHERE required
+
+Like UPDATE, Dew refuses to build a DELETE without a WHERE clause:
+
+```go
+// This returns an error:
+_, _, err := Users.Delete(db).ToSql()
+// "dew: UNSAFE DELETE! You must provide a Where clause."
+
+// To delete all rows intentionally:
+err := Users.Delete(db).
+    Where(dew.Raw("1=1")).
+    Exec()
+```
+
+## Returning
+
+```go
+sql, _, _ := Users.Delete(db).
+    Where(Users.ID.Eq(1)).
+    Returning(Users.ID, Users.Name).
+    ToSql()
+// DELETE FROM users WHERE users.id = $1 RETURNING id, name
+```
+
+### Scan
+
+```go
+var id int
+var name string
+err := Users.Delete(db).
+    Where(Users.ID.Eq(1)).
+    Returning(Users.ID, Users.Name).
+    Scan(ctx, &id, &name)
+```
+
+## RowsAffected
+
+```go
+n, err := Users.Delete(db).
+    Where(Users.Age.Lt(18)).
+    RowsAffected()
+```
+
+## Clone
+
+```go
+base := Users.Delete(db).Where(Users.Age.Lt(18))
+clone := base.Clone()
+clone.Where(Users.Name.Eq("Alice"))
+// base is unchanged
+```
+
+## ToSql
+
+```go
+sql, args, err := Users.Delete(db).
+    Where(Users.ID.Eq(1)).
+    ToSql()
+```

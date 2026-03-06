@@ -1,0 +1,22 @@
+{
+  "title": "Docs",
+  "pages": [
+    "---Getting Started---",
+    "index",
+    "schema",
+    "---Queries---",
+    "select",
+    "insert",
+    "update",
+    "delete",
+    "---Advanced---",
+    "transactions",
+    "jsonb",
+    "expressions",
+    "dialects",
+    "---Battle Examples---",
+    "examples-repository",
+    "examples-patterns",
+    "examples-vs-sql"
+  ]
+}

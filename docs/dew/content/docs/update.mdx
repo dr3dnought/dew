@@ -1,0 +1,105 @@
+---
+title: UPDATE
+description: Update rows with the Updator builder.
+---
+
+The `Updator` builder constructs UPDATE queries. Create one via `Table.Update(db)` or `dew.Update[T](db, schema)`.
+
+## Basic update
+
+```go
+err := Users.Update(db).
+    Set(Users.Name, "Bob").
+    Where(Users.ID.Eq(1)).
+    Exec()
+// UPDATE users SET name = $1 WHERE users.id = $2
+```
+
+## Multiple SET
+
+```go
+err := Users.Update(db).
+    Set(Users.Name, "Bob").
+    Set(Users.Age, 30).
+    Where(Users.ID.Eq(1)).
+    Exec()
+// UPDATE users SET name = $1, age = $2 WHERE users.id = $3
+```
+
+## SET with expression
+
+Use `dew.Raw()` for computed updates:
+
+```go
+err := Users.Update(db).
+    Set(Users.Age, dew.Raw("age + ?", 1)).
+    Where(Users.ID.Eq(1)).
+    Exec()
+// UPDATE users SET age = age + $1 WHERE users.id = $2
+```
+
+## Safety: WHERE required
+
+Dew refuses to build an UPDATE without a WHERE clause to prevent accidental full-table updates:
+
+```go
+// This returns an error:
+_, _, err := Users.Update(db).Set(Users.Name, "Bob").ToSql()
+// "dew: UNSAFE UPDATE! You must provide a Where clause."
+
+// To update all rows intentionally:
+err := Users.Update(db).
+    Set(Users.Name, "Bob").
+    Where(dew.Raw("1=1")).
+    Exec()
+```
+
+## Returning
+
+```go
+sql, _, _ := Users.Update(db).
+    Set(Users.Name, "Bob").
+    Where(Users.ID.Eq(1)).
+    Returning(Users.ID, Users.Name).
+    ToSql()
+// UPDATE users SET name = $1 WHERE users.id = $2 RETURNING id, name
+```
+
+### Scan
+
+```go
+var id int
+var name string
+err := Users.Update(db).
+    Set(Users.Name, "Bob").
+    Where(Users.ID.Eq(1)).
+    Returning(Users.ID, Users.Name).
+    Scan(ctx, &id, &name)
+```
+
+## RowsAffected
+
+```go
+n, err := Users.Update(db).
+    Set(Users.Name, "Bob").
+    Where(Users.Age.Lt(18)).
+    RowsAffected()
+```
+
+## Clone
+
+```go
+base := Users.Update(db).Set(Users.Name, "Bob").Where(Users.ID.Eq(1))
+clone := base.Clone()
+clone.Set(Users.Age, 30)
+// base is unchanged
+```
+
+## ToSql
+
+```go
+sql, args, err := Users.Update(db).
+    Set(Users.Name, "Bob").
+    Where(Users.ID.Eq(1)).
+    ToSql()
+```

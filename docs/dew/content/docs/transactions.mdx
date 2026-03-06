@@ -1,0 +1,118 @@
+---
+title: Transactions
+description: Run queries in a transaction.
+---
+
+Dew supports transactions via the `Querier` interface. Both `*dew.DB` and `*dew.Tx` implement `Querier`, so all builders (`From`, `Insert`, `Update`, `Delete`) accept either.
+
+## Begin a transaction
+
+```go
+tx, err := db.BeginTx(ctx, nil)
+if err != nil {
+    return err
+}
+```
+
+Or with default options:
+
+```go
+tx, err := db.Begin()
+```
+
+## Use builders with transactions
+
+Pass `tx` anywhere you'd pass `db`:
+
+```go
+tx, err := db.BeginTx(ctx, nil)
+if err != nil {
+    return err
+}
+
+err = Users.Insert(tx).
+    Columns(Users.Name, Users.Email).
+    Values("Alice", "alice@example.com").
+    Exec(ctx)
+if err != nil {
+    tx.Rollback()
+    return err
+}
+
+users, err := Users.From(tx).
+    Where(Users.Name.Eq("Alice")).
+    All(ctx)
+if err != nil {
+    tx.Rollback()
+    return err
+}
+
+return tx.Commit()
+```
+
+## Commit and rollback
+
+```go
+err = tx.Commit()   // persist changes
+err = tx.Rollback() // discard changes
+```
+
+## Context cancellation
+
+`BeginTx` respects context cancellation. If the context is cancelled, the transaction is automatically rolled back by the `database/sql` package:
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+
+tx, err := db.BeginTx(ctx, nil)
+// if ctx times out, tx is auto-rolled back
+```
+
+## Transaction options
+
+Pass `*sql.TxOptions` to control isolation level and read-only mode:
+
+```go
+tx, err := db.BeginTx(ctx, &sql.TxOptions{
+    Isolation: sql.LevelSerializable,
+    ReadOnly:  true,
+})
+```
+
+## The Querier interface
+
+`Querier` is the interface that both `*DB` and `*Tx` satisfy:
+
+```go
+type Querier interface {
+    ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+    QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+    QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+    getDialect() Dialect // unexported — only dew types implement this
+}
+```
+
+The `getDialect()` method is unexported, sealing the interface. Only `*dew.DB` and `*dew.Tx` can implement it.
+
+## Writing transaction-agnostic code
+
+Since all builders accept `Querier`, your repository functions can work with or without a transaction:
+
+```go
+func CreateUser(q dew.Querier, name, email string) error {
+    return Users.Insert(q).
+        Columns(Users.Name, Users.Email).
+        Values(name, email).
+        Exec()
+}
+
+// Without transaction
+CreateUser(db, "Alice", "alice@example.com")
+
+// With transaction
+tx, _ := db.BeginTx(ctx, nil)
+CreateUser(tx, "Alice", "alice@example.com")
+CreateUser(tx, "Bob", "bob@example.com")
+tx.Commit()
+```

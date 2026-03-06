@@ -1,0 +1,121 @@
+---
+title: INSERT
+description: Insert rows with the Insertor builder.
+---
+
+The `Insertor` builder constructs INSERT queries. Create one via `Table.Insert(db)` or `dew.Insert[T](db, schema)`.
+
+## Insert with values
+
+```go
+err := Users.Insert(db).
+    Columns(Users.Name, Users.Email).
+    Values("Alice", "alice@example.com").
+    Exec()
+```
+
+## Multiple rows
+
+```go
+err := Users.Insert(db).
+    Columns(Users.Name, Users.Email).
+    Values("Alice", "alice@example.com").
+    Values("Bob", "bob@example.com").
+    Exec()
+```
+
+## Insert with models
+
+Pass struct pointers directly — columns are inferred from struct fields:
+
+```go
+user := &User{Name: "Alice", Email: "alice@example.com"}
+
+err := Users.Insert(db).
+    Models(user).
+    Exec()
+```
+
+Multiple models:
+
+```go
+err := Users.Insert(db).
+    Models(user1, user2, user3).
+    Exec()
+```
+
+<Callout type="warn">
+Do not use `Columns()` with `Models()` — columns are inferred from the struct. Mixing them returns an error.
+</Callout>
+
+## Returning
+
+PostgreSQL `RETURNING` clause:
+
+```go
+sql, args, _ := Users.Insert(db).
+    Columns(Users.Name).
+    Values("Alice").
+    Returning(Users.ID).
+    ToSql()
+// INSERT INTO users (name) VALUES ($1) RETURNING users.id
+```
+
+### ScanWith + Returning
+
+```go
+inserted, err := Users.Insert(db).
+    Columns(Users.Name).
+    Values("Alice").
+    Returning(Users.ID, Users.Name).
+    ScanWith(func(rows *sql.Rows) (*User, error) {
+        var u User
+        err := rows.Scan(&u.ID, &u.Name)
+        return &u, err
+    })
+```
+
+## On conflict (upsert)
+
+### Do nothing
+
+```go
+err := Users.Insert(db).
+    Columns(Users.Name, Users.Email).
+    Values("Alice", "alice@example.com").
+    OnConflict(Users.Email).
+    DoNothing().
+    Exec()
+// INSERT INTO users (name, email) VALUES ($1, $2) ON CONFLICT (email) DO NOTHING
+```
+
+### Do update
+
+```go
+err := Users.Insert(db).
+    Columns(Users.Name, Users.Email).
+    Values("Alice", "alice@example.com").
+    OnConflict(Users.Email).
+    SetUpdate(Users.Name, "Alice Updated").
+    Exec()
+// INSERT INTO users (name, email) VALUES ($1, $2)
+// ON CONFLICT (email) DO UPDATE SET name = $3
+```
+
+## ToSql
+
+```go
+sql, args, err := Users.Insert(db).
+    Columns(Users.Name).
+    Values("Alice").
+    ToSql()
+```
+
+## Context
+
+```go
+err := Users.Insert(db).
+    Columns(Users.Name).
+    Values("Alice").
+    Exec(ctx)
+```

@@ -1,0 +1,123 @@
+---
+title: Schema
+description: Define tables, columns, and models.
+---
+
+Dew uses a schema-first approach. You define a Go struct (the model) and a schema variable that maps struct fields to typed columns.
+
+## Model
+
+A model is a plain Go struct. Fields are mapped to columns using struct tags.
+
+```go
+type User struct {
+    ID    int    `db:"id"`
+    Name  string `db:"name"`
+    Email string `db:"email"`
+    Age   int    `db:"age"`
+}
+```
+
+### Struct tags
+
+Dew checks tags in this order: `db` → `sql` → auto snake_case.
+
+| Tag | Effect |
+|-----|--------|
+| `` `db:"column_name"` `` | Use `column_name` |
+| `` `db:"-"` `` | Skip this field |
+| `` `sql:"column_name"` `` | Fallback if no `db` tag |
+| *(no tag)* | Auto-converts `FieldName` → `field_name` |
+
+## DefineSchema
+
+`DefineSchema` creates a schema variable with typed columns.
+
+```go
+var Users = dew.DefineSchema("users", dew.PostgreSQLDialect{}, func(t dew.Table[User]) struct {
+    dew.Table[User]
+    ID    dew.IntColumn
+    Name  dew.StringColumn
+    Email dew.StringColumn
+    Age   dew.IntColumn
+} {
+    return struct {
+        dew.Table[User]
+        ID    dew.IntColumn
+        Name  dew.StringColumn
+        Email dew.StringColumn
+        Age   dew.IntColumn
+    }{
+        Table: t,
+        ID:    t.IntColumn("id"),
+        Name:  t.StringColumn("name"),
+        Email: t.StringColumn("email"),
+        Age:   t.IntColumn("age"),
+    }
+})
+```
+
+The schema embeds `dew.Table[User]`, which gives you `Users.From(db)`, `Users.Insert(db)`, etc.
+
+## Column types
+
+| Method | Type | Go type |
+|--------|------|---------|
+| `t.IntColumn("name")` | `IntColumn` | `int` |
+| `t.StringColumn("name")` | `StringColumn` | `string` |
+| `t.BoolColumn("name")` | `BoolColumn` | `bool` |
+| `t.FloatColumn("name")` | `FloatColumn` | `float64` |
+| `t.TimeColumn("name")` | `TimeColumn` | `time.Time` |
+| `t.UUIDColumn("name")` | `UUIDColumn` | `string` |
+
+For JSONB columns, see [JSONB](/docs/jsonb).
+
+## Column operators
+
+All column types share these common operators:
+
+| Method | SQL |
+|--------|-----|
+| `col.Eq(val)` | `col = ?` |
+| `col.NotEq(val)` | `col != ?` |
+| `col.IsNull()` | `col IS NULL` |
+| `col.IsNotNull()` | `col IS NOT NULL` |
+| `col.In(vals...)` | `col IN (?, ?, ...)` |
+| `col.NotIn(vals...)` | `col NOT IN (?, ?, ...)` |
+| `col.InSub(subquery)` | `col IN (SELECT ...)` |
+
+Numeric columns (`IntColumn`, `FloatColumn`) also have:
+
+| Method | SQL |
+|--------|-----|
+| `col.Gt(val)` | `col > ?` |
+| `col.Gte(val)` | `col >= ?` |
+| `col.Lt(val)` | `col < ?` |
+| `col.Lte(val)` | `col <= ?` |
+| `col.Between(min, max)` | `col BETWEEN ? AND ?` |
+
+String columns have:
+
+| Method | SQL |
+|--------|-----|
+| `col.Like(pattern)` | `col LIKE ?` |
+| `col.ILike(pattern)` | `col ILIKE ?` |
+
+## Aliases
+
+Use `.As()` to alias a column in SELECT queries:
+
+```go
+Users.From(db).Select(Users.Name.As("user_name"))
+// SELECT name AS user_name FROM users
+```
+
+## NewTable
+
+If you prefer not to use `DefineSchema`, create a table directly:
+
+```go
+table := dew.NewTable[User]("users", dew.PostgreSQLDialect{})
+id := table.IntColumn("id")
+name := table.StringColumn("name")
+```
