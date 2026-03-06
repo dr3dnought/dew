@@ -125,8 +125,8 @@ func TestSelectorToSql_WithTx(t *testing.T) {
 	}
 }
 
-// TestInsertorToSql_WithTx verifies insert query building through *Tx.
-func TestInsertorToSql_WithTx(t *testing.T) {
+// TestInserterToSql_WithTx verifies insert query building through *Tx.
+func TestInserterToSql_WithTx(t *testing.T) {
 	type User struct {
 		ID   int    `col:"id"`
 		Name string `col:"name"`
@@ -152,8 +152,8 @@ func TestInsertorToSql_WithTx(t *testing.T) {
 	}
 }
 
-// TestUpdatorToSql_WithTx verifies update query building through *Tx.
-func TestUpdatorToSql_WithTx(t *testing.T) {
+// TestUpdaterToSql_WithTx verifies update query building through *Tx.
+func TestUpdaterToSql_WithTx(t *testing.T) {
 	type User struct {
 		ID   int    `col:"id"`
 		Name string `col:"name"`
@@ -180,8 +180,8 @@ func TestUpdatorToSql_WithTx(t *testing.T) {
 	}
 }
 
-// TestDeletorToSql_WithTx verifies delete query building through *Tx.
-func TestDeletorToSql_WithTx(t *testing.T) {
+// TestDeleterToSql_WithTx verifies delete query building through *Tx.
+func TestDeleterToSql_WithTx(t *testing.T) {
 	type User struct {
 		ID   int    `col:"id"`
 		Name string `col:"name"`

@@ -271,9 +271,9 @@ func TestSelector_Clone(t *testing.T) {
 	}
 }
 
-// ─── Insertor ────────────────────────────────────────────────
+// ─── Inserter ────────────────────────────────────────────────
 
-func TestInsertor_SingleRow(t *testing.T) {
+func TestInserter_SingleRow(t *testing.T) {
 	sql, args, err := testTable.Insert(pgDB).
 		Columns(tName, tEmail).
 		Values("Alice", "alice@test.com").
@@ -294,7 +294,7 @@ func TestInsertor_SingleRow(t *testing.T) {
 	}
 }
 
-func TestInsertor_MultiRow(t *testing.T) {
+func TestInserter_MultiRow(t *testing.T) {
 	sql, args, err := testTable.Insert(pgDB).
 		Columns(tName, tEmail).
 		Values("Alice", "a@test.com").
@@ -316,7 +316,7 @@ func TestInsertor_MultiRow(t *testing.T) {
 	}
 }
 
-func TestInsertor_MySQL(t *testing.T) {
+func TestInserter_MySQL(t *testing.T) {
 	sql, args, err := testTable.Insert(myDB).
 		Columns(tName).
 		Values("Alice").
@@ -337,7 +337,7 @@ func TestInsertor_MySQL(t *testing.T) {
 	}
 }
 
-func TestInsertor_Models(t *testing.T) {
+func TestInserter_Models(t *testing.T) {
 	u := &testUser{ID: 1, Name: "Alice", Email: "a@test.com", Age: 30}
 	sql, args, err := testTable.Insert(pgDB).Models(u).ToSql()
 
@@ -356,7 +356,7 @@ func TestInsertor_Models(t *testing.T) {
 	}
 }
 
-func TestInsertor_Returning(t *testing.T) {
+func TestInserter_Returning(t *testing.T) {
 	sql, _, err := testTable.Insert(pgDB).
 		Columns(tName).
 		Values("Alice").
@@ -373,7 +373,7 @@ func TestInsertor_Returning(t *testing.T) {
 	}
 }
 
-func TestInsertor_OnConflictDoNothing(t *testing.T) {
+func TestInserter_OnConflictDoNothing(t *testing.T) {
 	sql, _, err := testTable.Insert(pgDB).
 		Columns(tName, tEmail).
 		Values("Alice", "a@test.com").
@@ -391,7 +391,7 @@ func TestInsertor_OnConflictDoNothing(t *testing.T) {
 	}
 }
 
-func TestInsertor_OnConflictDoUpdate(t *testing.T) {
+func TestInserter_OnConflictDoUpdate(t *testing.T) {
 	sql, args, err := testTable.Insert(pgDB).
 		Columns(tName, tEmail).
 		Values("Alice", "a@test.com").
@@ -417,14 +417,14 @@ func TestInsertor_OnConflictDoUpdate(t *testing.T) {
 	}
 }
 
-func TestInsertor_ErrorNoData(t *testing.T) {
+func TestInserter_ErrorNoData(t *testing.T) {
 	_, _, err := testTable.Insert(pgDB).ToSql()
 	if err == nil {
 		t.Fatal("expected error for insert with no data")
 	}
 }
 
-func TestInsertor_ErrorColumnsWithModels(t *testing.T) {
+func TestInserter_ErrorColumnsWithModels(t *testing.T) {
 	u := &testUser{Name: "Alice"}
 	_, _, err := testTable.Insert(pgDB).Columns(tName).Models(u).ToSql()
 	if err == nil {
@@ -432,7 +432,7 @@ func TestInsertor_ErrorColumnsWithModels(t *testing.T) {
 	}
 }
 
-func TestInsertor_ErrorValuesAndModels(t *testing.T) {
+func TestInserter_ErrorValuesAndModels(t *testing.T) {
 	u := &testUser{Name: "Alice"}
 	_, _, err := testTable.Insert(pgDB).
 		Columns(tName).
@@ -444,7 +444,7 @@ func TestInsertor_ErrorValuesAndModels(t *testing.T) {
 	}
 }
 
-func TestInsertor_ErrorMismatchedValues(t *testing.T) {
+func TestInserter_ErrorMismatchedValues(t *testing.T) {
 	_, _, err := testTable.Insert(pgDB).
 		Columns(tName, tEmail).
 		Values("Alice"). // only 1 value for 2 columns
@@ -454,9 +454,9 @@ func TestInsertor_ErrorMismatchedValues(t *testing.T) {
 	}
 }
 
-// ─── Updator ─────────────────────────────────────────────────
+// ─── Updater ─────────────────────────────────────────────────
 
-func TestUpdator_Basic(t *testing.T) {
+func TestUpdater_Basic(t *testing.T) {
 	sql, args, err := testTable.Update(pgDB).
 		Set(tName, "Bob").
 		Where(tID.Eq(1)).
@@ -477,7 +477,7 @@ func TestUpdator_Basic(t *testing.T) {
 	}
 }
 
-func TestUpdator_MultipleSet(t *testing.T) {
+func TestUpdater_MultipleSet(t *testing.T) {
 	sql, args, err := testTable.Update(pgDB).
 		Set(tName, "Bob").
 		Set(tAge, 25).
@@ -499,7 +499,7 @@ func TestUpdator_MultipleSet(t *testing.T) {
 	}
 }
 
-func TestUpdator_SetExpression(t *testing.T) {
+func TestUpdater_SetExpression(t *testing.T) {
 	sql, args, err := testTable.Update(pgDB).
 		Set(tAge, Raw("age + ?", 1)).
 		Where(tID.Eq(1)).
@@ -520,7 +520,7 @@ func TestUpdator_SetExpression(t *testing.T) {
 	}
 }
 
-func TestUpdator_Returning(t *testing.T) {
+func TestUpdater_Returning(t *testing.T) {
 	sql, _, err := testTable.Update(pgDB).
 		Set(tName, "Bob").
 		Where(tID.Eq(1)).
@@ -537,7 +537,7 @@ func TestUpdator_Returning(t *testing.T) {
 	}
 }
 
-func TestUpdator_MySQL(t *testing.T) {
+func TestUpdater_MySQL(t *testing.T) {
 	sql, args, err := testTable.Update(myDB).
 		Set(tName, "Bob").
 		Where(tID.Eq(1)).
@@ -558,21 +558,21 @@ func TestUpdator_MySQL(t *testing.T) {
 	}
 }
 
-func TestUpdator_ErrorNoSet(t *testing.T) {
+func TestUpdater_ErrorNoSet(t *testing.T) {
 	_, _, err := testTable.Update(pgDB).Where(tID.Eq(1)).ToSql()
 	if err == nil {
 		t.Fatal("expected error for update with no Set")
 	}
 }
 
-func TestUpdator_ErrorNoWhere(t *testing.T) {
+func TestUpdater_ErrorNoWhere(t *testing.T) {
 	_, _, err := testTable.Update(pgDB).Set(tName, "Bob").ToSql()
 	if err == nil {
 		t.Fatal("expected error for update with no Where")
 	}
 }
 
-func TestUpdator_Clone(t *testing.T) {
+func TestUpdater_Clone(t *testing.T) {
 	base := testTable.Update(pgDB).Set(tName, "Bob").Where(tID.Eq(1))
 	clone := base.Clone()
 	clone.Set(tAge, 30)
@@ -585,9 +585,9 @@ func TestUpdator_Clone(t *testing.T) {
 	}
 }
 
-// ─── Deletor ─────────────────────────────────────────────────
+// ─── Deleter ─────────────────────────────────────────────────
 
-func TestDeletor_Basic(t *testing.T) {
+func TestDeleter_Basic(t *testing.T) {
 	sql, args, err := testTable.Delete(pgDB).
 		Where(tID.Eq(1)).
 		ToSql()
@@ -607,7 +607,7 @@ func TestDeletor_Basic(t *testing.T) {
 	}
 }
 
-func TestDeletor_MultipleWhere(t *testing.T) {
+func TestDeleter_MultipleWhere(t *testing.T) {
 	sql, args, err := testTable.Delete(pgDB).
 		Where(tName.Eq("Alice"), tAge.Lt(18)).
 		ToSql()
@@ -627,7 +627,7 @@ func TestDeletor_MultipleWhere(t *testing.T) {
 	}
 }
 
-func TestDeletor_Returning(t *testing.T) {
+func TestDeleter_Returning(t *testing.T) {
 	sql, _, err := testTable.Delete(pgDB).
 		Where(tID.Eq(1)).
 		Returning(tID, tName).
@@ -643,7 +643,7 @@ func TestDeletor_Returning(t *testing.T) {
 	}
 }
 
-func TestDeletor_MySQL(t *testing.T) {
+func TestDeleter_MySQL(t *testing.T) {
 	sql, args, err := testTable.Delete(myDB).
 		Where(tID.Eq(1)).
 		ToSql()
@@ -663,7 +663,7 @@ func TestDeletor_MySQL(t *testing.T) {
 	}
 }
 
-func TestDeletor_ForceDeleteAll(t *testing.T) {
+func TestDeleter_ForceDeleteAll(t *testing.T) {
 	sql, _, err := testTable.Delete(pgDB).
 		Where(Raw("1=1")).
 		ToSql()
@@ -678,14 +678,14 @@ func TestDeletor_ForceDeleteAll(t *testing.T) {
 	}
 }
 
-func TestDeletor_ErrorNoWhere(t *testing.T) {
+func TestDeleter_ErrorNoWhere(t *testing.T) {
 	_, _, err := testTable.Delete(pgDB).ToSql()
 	if err == nil {
 		t.Fatal("expected error for delete with no Where")
 	}
 }
 
-func TestDeletor_Clone(t *testing.T) {
+func TestDeleter_Clone(t *testing.T) {
 	base := testTable.Delete(pgDB).Where(tID.Eq(1))
 	clone := base.Clone()
 	clone.Where(tName.Eq("Alice"))

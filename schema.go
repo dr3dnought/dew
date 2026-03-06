@@ -31,22 +31,22 @@ func (t Table[T]) From(db Querier) *Selector[T] {
 	}
 }
 
-func (t Table[T]) Insert(db Querier) *Insertor[T] {
-	return &Insertor[T]{
+func (t Table[T]) Insert(db Querier) *Inserter[T] {
+	return &Inserter[T]{
 		db:    db,
 		table: t,
 	}
 }
 
-func (t Table[T]) Delete(db Querier) *Deletor[T] {
-	return &Deletor[T]{
+func (t Table[T]) Delete(db Querier) *Deleter[T] {
+	return &Deleter[T]{
 		db:    db,
 		table: t,
 	}
 }
 
-func (t Table[T]) Update(db Querier) *Updator[T] {
-	return &Updator[T]{
+func (t Table[T]) Update(db Querier) *Updater[T] {
+	return &Updater[T]{
 		db:    db,
 		table: t,
 	}

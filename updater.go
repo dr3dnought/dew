@@ -12,7 +12,7 @@ type setClause struct {
 	value  any
 }
 
-type Updator[T any] struct {
+type Updater[T any] struct {
 	db     Querier
 	table  Tabler
 	wheres []Expression
@@ -21,14 +21,14 @@ type Updator[T any] struct {
 	returningCols []Column
 }
 
-func Update[T any](db Querier, table Tabler) *Updator[T] {
-	return &Updator[T]{
+func Update[T any](db Querier, table Tabler) *Updater[T] {
+	return &Updater[T]{
 		db:    db,
 		table: table,
 	}
 }
 
-func (u *Updator[T]) Set(col Column, val any) *Updator[T] {
+func (u *Updater[T]) Set(col Column, val any) *Updater[T] {
 	u.sets = append(u.sets, setClause{
 		column: col.ColumnName(),
 		value:  val,
@@ -36,17 +36,17 @@ func (u *Updator[T]) Set(col Column, val any) *Updator[T] {
 	return u
 }
 
-func (u *Updator[T]) Where(expr ...Expression) *Updator[T] {
+func (u *Updater[T]) Where(expr ...Expression) *Updater[T] {
 	u.wheres = append(u.wheres, expr...)
 	return u
 }
 
-func (u *Updator[T]) Returning(cols ...Column) *Updator[T] {
+func (u *Updater[T]) Returning(cols ...Column) *Updater[T] {
 	u.returningCols = append(u.returningCols, cols...)
 	return u
 }
 
-func (u *Updator[T]) Exec(ctxs ...context.Context) error {
+func (u *Updater[T]) Exec(ctxs ...context.Context) error {
 	ctx := getCtx(ctxs)
 
 	query, args, err := u.buildUpdateQuery()
@@ -58,7 +58,7 @@ func (u *Updator[T]) Exec(ctxs ...context.Context) error {
 	return err
 }
 
-func (u *Updator[T]) Scan(ctx context.Context, dest ...any) error {
+func (u *Updater[T]) Scan(ctx context.Context, dest ...any) error {
 	if len(u.returningCols) == 0 {
 		return fmt.Errorf("dew: Scan requires .Returning(...)")
 	}
@@ -75,7 +75,7 @@ func (u *Updator[T]) Scan(ctx context.Context, dest ...any) error {
 	return u.db.QueryRowContext(ctx, query, args...).Scan(dest...)
 }
 
-func (u *Updator[T]) RowsAffected(ctxs ...context.Context) (int64, error) {
+func (u *Updater[T]) RowsAffected(ctxs ...context.Context) (int64, error) {
 	ctx := getCtx(ctxs)
 
 	query, args, err := u.buildUpdateQuery()
@@ -91,11 +91,11 @@ func (u *Updator[T]) RowsAffected(ctxs ...context.Context) (int64, error) {
 	return res.RowsAffected()
 }
 
-func (u *Updator[T]) ToSql() (string, []any, error) {
+func (u *Updater[T]) ToSql() (string, []any, error) {
 	return u.buildUpdateQuery()
 }
 
-func (u *Updator[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...context.Context) ([]*T, error) {
+func (u *Updater[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...context.Context) ([]*T, error) {
 	if len(u.returningCols) == 0 {
 		return nil, fmt.Errorf("dew: ScanWith requires Returning() to be called")
 	}
@@ -133,8 +133,8 @@ func (u *Updator[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...conte
 	return results, nil
 }
 
-func (u *Updator[T]) Clone() *Updator[T] {
-	return &Updator[T]{
+func (u *Updater[T]) Clone() *Updater[T] {
+	return &Updater[T]{
 		db:            u.db,
 		table:         u.table,
 		wheres:        append([]Expression{}, u.wheres...),
@@ -143,7 +143,7 @@ func (u *Updator[T]) Clone() *Updator[T] {
 	}
 }
 
-func (u *Updator[T]) buildUpdateQuery() (string, []any, error) {
+func (u *Updater[T]) buildUpdateQuery() (string, []any, error) {
 	if len(u.sets) == 0 {
 		return "", nil, fmt.Errorf("dew: UPDATE requires at least one Set()")
 	}

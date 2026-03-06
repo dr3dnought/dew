@@ -18,14 +18,14 @@ This file provides context for AI agents working with this codebase.
 | `column.go` | Typed column definitions (`IntColumn`, `StringColumn`, etc.) with comparison methods |
 | `expr.go` | Expression interface and helpers (`And`, `Or`, `Raw`, aggregates) |
 | `selector.go` | SELECT query builder (`Selector[T]`) |
-| `insertor.go` | INSERT query builder (`Insertor[T]`) with conflict handling |
-| `updator.go` | UPDATE query builder (`Updator[T]`) |
-| `deletor.go` | DELETE query builder (`Deletor[T]`) |
+| `inserter.go` | INSERT query builder (`Inserter[T]`) with conflict handling |
+| `updater.go` | UPDATE query builder (`Updater[T]`) |
+| `deleter.go` | DELETE query builder (`Deleter[T]`) |
 
 ### Key Patterns
 
 1. **Generics for Type Safety**
-   - All builders are generic: `Selector[T]`, `Insertor[T]`, `Updator[T]`, `Deletor[T]`
+   - All builders are generic: `Selector[T]`, `Inserter[T]`, `Updater[T]`, `Deleter[T]`
    - `T` represents the model struct that maps to database rows
 
 2. **Fluent Builder Pattern**

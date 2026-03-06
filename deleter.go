@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-type Deletor[T any] struct {
+type Deleter[T any] struct {
 	db     Querier
 	table  Tabler
 	wheres []Expression
@@ -14,24 +14,24 @@ type Deletor[T any] struct {
 	returningCols []Column
 }
 
-func Delete[T any](db Querier, table Tabler) *Deletor[T] {
-	return &Deletor[T]{
+func Delete[T any](db Querier, table Tabler) *Deleter[T] {
+	return &Deleter[T]{
 		db:    db,
 		table: table,
 	}
 }
 
-func (d *Deletor[T]) Where(expr ...Expression) *Deletor[T] {
+func (d *Deleter[T]) Where(expr ...Expression) *Deleter[T] {
 	d.wheres = append(d.wheres, expr...)
 	return d
 }
 
-func (d *Deletor[T]) Returning(cols ...Column) *Deletor[T] {
+func (d *Deleter[T]) Returning(cols ...Column) *Deleter[T] {
 	d.returningCols = append(d.returningCols, cols...)
 	return d
 }
 
-func (d *Deletor[T]) Exec(ctxs ...context.Context) error {
+func (d *Deleter[T]) Exec(ctxs ...context.Context) error {
 	ctx := getCtx(ctxs)
 
 	query, args, err := d.buildDeleteQuery()
@@ -43,7 +43,7 @@ func (d *Deletor[T]) Exec(ctxs ...context.Context) error {
 	return err
 }
 
-func (d *Deletor[T]) Scan(ctx context.Context, dest ...any) error {
+func (d *Deleter[T]) Scan(ctx context.Context, dest ...any) error {
 	if len(d.returningCols) == 0 {
 		return fmt.Errorf("dew: Scan requires .Returning(...)")
 	}
@@ -60,7 +60,7 @@ func (d *Deletor[T]) Scan(ctx context.Context, dest ...any) error {
 	return d.db.QueryRowContext(ctx, query, args...).Scan(dest...)
 }
 
-func (d *Deletor[T]) RowsAffected(ctxs ...context.Context) (int64, error) {
+func (d *Deleter[T]) RowsAffected(ctxs ...context.Context) (int64, error) {
 	ctx := getCtx(ctxs)
 
 	query, args, err := d.buildDeleteQuery()
@@ -76,12 +76,12 @@ func (d *Deletor[T]) RowsAffected(ctxs ...context.Context) (int64, error) {
 	return res.RowsAffected()
 }
 
-func (d *Deletor[T]) ToSql() (string, []any, error) {
+func (d *Deleter[T]) ToSql() (string, []any, error) {
 	return d.buildDeleteQuery()
 }
 
-func (d *Deletor[T]) Clone() *Deletor[T] {
-	return &Deletor[T]{
+func (d *Deleter[T]) Clone() *Deleter[T] {
+	return &Deleter[T]{
 		db:            d.db,
 		table:         d.table,
 		wheres:        append([]Expression{}, d.wheres...),
@@ -89,7 +89,7 @@ func (d *Deletor[T]) Clone() *Deletor[T] {
 	}
 }
 
-func (d *Deletor[T]) buildDeleteQuery() (string, []any, error) {
+func (d *Deleter[T]) buildDeleteQuery() (string, []any, error) {
 	if len(d.wheres) == 0 {
 		return "", nil, fmt.Errorf("dew: UNSAFE DELETE! You must provide a Where clause. Use Where(dew.Raw(\"1=1\")) to force delete all")
 	}

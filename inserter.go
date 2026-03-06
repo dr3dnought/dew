@@ -15,7 +15,7 @@ const (
 	ConflictActionTypeUpdate  ConflictActionType = "UPDATE"
 )
 
-type Insertor[T any] struct {
+type Inserter[T any] struct {
 	db      Querier
 	table   Tabler
 	columns []Column
@@ -25,42 +25,42 @@ type Insertor[T any] struct {
 	returningCols []Column
 }
 
-func Insert[T any](db Querier, table Tabler) *Insertor[T] {
-	return &Insertor[T]{
+func Insert[T any](db Querier, table Tabler) *Inserter[T] {
+	return &Inserter[T]{
 		db:    db,
 		table: table,
 	}
 }
 
-func (i *Insertor[T]) Columns(cols ...Column) *Insertor[T] {
+func (i *Inserter[T]) Columns(cols ...Column) *Inserter[T] {
 	i.columns = append(i.columns, cols...)
 	return i
 }
 
-func (i *Insertor[T]) Values(vals ...any) *Insertor[T] {
+func (i *Inserter[T]) Values(vals ...any) *Inserter[T] {
 	i.values = append(i.values, vals)
 	return i
 }
 
-func (i *Insertor[T]) Models(models ...*T) *Insertor[T] {
+func (i *Inserter[T]) Models(models ...*T) *Inserter[T] {
 	i.models = append(i.models, models...)
 	return i
 }
 
-func (i *Insertor[T]) Returning(cols ...Column) *Insertor[T] {
+func (i *Inserter[T]) Returning(cols ...Column) *Inserter[T] {
 	i.returningCols = append(i.returningCols, cols...)
 	return i
 }
 
-func (i *Insertor[T]) OnConflict(cols ...Column) *ConfilctInsertor[T] {
-	conflictInsertor := newConfilctInsertor(i)
+func (i *Inserter[T]) OnConflict(cols ...Column) *ConflictInserter[T] {
+	conflictInserter := newConflictInserter(i)
 	for _, c := range cols {
-		conflictInsertor.conflictTargets = append(conflictInsertor.conflictTargets, c.ColumnName())
+		conflictInserter.conflictTargets = append(conflictInserter.conflictTargets, c.ColumnName())
 	}
-	return conflictInsertor
+	return conflictInserter
 }
 
-func (i *Insertor[T]) buildFromModels() (string, []any, error) {
+func (i *Inserter[T]) buildFromModels() (string, []any, error) {
 	if len(i.models) == 0 {
 		return "", nil, fmt.Errorf("dew: no models to insert")
 	}
@@ -127,7 +127,7 @@ func (i *Insertor[T]) buildFromModels() (string, []any, error) {
 	return query, allArgs, nil
 }
 
-func (i *Insertor[T]) buildFromValues() (string, []any, error) {
+func (i *Inserter[T]) buildFromValues() (string, []any, error) {
 	if len(i.columns) == 0 {
 		return "", nil, fmt.Errorf("dew: no columns specified")
 	}
@@ -168,7 +168,7 @@ func (i *Insertor[T]) buildFromValues() (string, []any, error) {
 	return query, allArgs, nil
 }
 
-func (i *Insertor[T]) buildInsertQuery() (string, []any, error) {
+func (i *Inserter[T]) buildInsertQuery() (string, []any, error) {
 	hasModels := len(i.models) > 0
 	hasValues := len(i.values) > 0
 
@@ -209,7 +209,7 @@ func (i *Insertor[T]) buildInsertQuery() (string, []any, error) {
 	return query, args, nil
 }
 
-func (i *Insertor[T]) Exec(ctxs ...context.Context) error {
+func (i *Inserter[T]) Exec(ctxs ...context.Context) error {
 	ctx := context.Background()
 	if len(ctxs) > 0 {
 		ctx = ctxs[0]
@@ -224,11 +224,11 @@ func (i *Insertor[T]) Exec(ctxs ...context.Context) error {
 	return err
 }
 
-func (i *Insertor[T]) ToSql() (string, []any, error) {
+func (i *Inserter[T]) ToSql() (string, []any, error) {
 	return i.buildInsertQuery()
 }
 
-func (i *Insertor[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...context.Context) ([]*T, error) {
+func (i *Inserter[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...context.Context) ([]*T, error) {
 	if len(i.returningCols) == 0 {
 		return nil, fmt.Errorf("dew: ScanWith requires Returning() to be called")
 	}
@@ -266,27 +266,27 @@ func (i *Insertor[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...cont
 	return results, nil
 }
 
-type ConfilctInsertor[T any] struct {
-	*Insertor[T]
+type ConflictInserter[T any] struct {
+	*Inserter[T]
 
 	conflictTargets []string
 	conflictAction  ConflictActionType
 	conflictSets    map[string]any
 }
 
-func newConfilctInsertor[T any](insertor *Insertor[T]) *ConfilctInsertor[T] {
-	return &ConfilctInsertor[T]{
-		Insertor:     insertor,
+func newConflictInserter[T any](insertor *Inserter[T]) *ConflictInserter[T] {
+	return &ConflictInserter[T]{
+		Inserter:     insertor,
 		conflictSets: make(map[string]any),
 	}
 }
 
-func (i *ConfilctInsertor[T]) DoNothing() *ConfilctInsertor[T] {
+func (i *ConflictInserter[T]) DoNothing() *ConflictInserter[T] {
 	i.conflictAction = "NOTHING"
 	return i
 }
 
-func (i *ConfilctInsertor[T]) SetUpdate(col Column, val any) *ConfilctInsertor[T] {
+func (i *ConflictInserter[T]) SetUpdate(col Column, val any) *ConflictInserter[T] {
 	if i.conflictSets == nil {
 		i.conflictSets = make(map[string]any)
 	}
@@ -295,7 +295,7 @@ func (i *ConfilctInsertor[T]) SetUpdate(col Column, val any) *ConfilctInsertor[T
 	return i
 }
 
-func (i *ConfilctInsertor[T]) buildInsertQuery() (string, []any, error) {
+func (i *ConflictInserter[T]) buildInsertQuery() (string, []any, error) {
 	var query string
 	var args []any
 	var err error
@@ -367,7 +367,7 @@ func (i *ConfilctInsertor[T]) buildInsertQuery() (string, []any, error) {
 	return query, args, nil
 }
 
-func (i *ConfilctInsertor[T]) Exec(ctxs ...context.Context) error {
+func (i *ConflictInserter[T]) Exec(ctxs ...context.Context) error {
 	ctx := context.Background()
 	if len(ctxs) > 0 {
 		ctx = ctxs[0]
@@ -382,11 +382,11 @@ func (i *ConfilctInsertor[T]) Exec(ctxs ...context.Context) error {
 	return err
 }
 
-func (i *ConfilctInsertor[T]) ToSql() (string, []any, error) {
+func (i *ConflictInserter[T]) ToSql() (string, []any, error) {
 	return i.buildInsertQuery()
 }
 
-func (i *ConfilctInsertor[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...context.Context) ([]*T, error) {
+func (i *ConflictInserter[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...context.Context) ([]*T, error) {
 	if len(i.returningCols) == 0 {
 		return nil, fmt.Errorf("dew: ScanWith requires Returning() to be called")
 	}
