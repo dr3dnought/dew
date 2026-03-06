@@ -1,6 +1,7 @@
 package dew
 
 import (
+	"database/sql"
 	"reflect"
 	"testing"
 )
@@ -937,6 +938,31 @@ func TestSetQuery_MySQL(t *testing.T) {
 	}
 	if !reflect.DeepEqual(args, wantArgs) {
 		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+// ─── RowScanner ─────────────────────────────────────────────
+
+type scannerUser struct {
+	ID   int    `col:"id"`
+	Name string `col:"name"`
+}
+
+func (u *scannerUser) ScanRow(rows *sql.Rows) error {
+	return rows.Scan(&u.ID, &u.Name)
+}
+
+func TestRowScanner_Detected(t *testing.T) {
+	var zero scannerUser
+	if _, ok := any(&zero).(RowScanner); !ok {
+		t.Fatal("*scannerUser should implement RowScanner")
+	}
+}
+
+func TestRowScanner_NotDetected(t *testing.T) {
+	var zero testUser
+	if _, ok := any(&zero).(RowScanner); ok {
+		t.Fatal("*testUser should NOT implement RowScanner")
 	}
 }
 

@@ -3,7 +3,6 @@ package dew
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strings"
 )
 
@@ -117,24 +116,7 @@ func (sq *SetQuery[T]) All(ctxs ...context.Context) ([]*T, error) {
 	}
 	defer rows.Close()
 
-	modelType := reflect.TypeOf(new(T)).Elem()
-	targetIndices, err := resolveScanIndices(modelType, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var results []*T
-	for rows.Next() {
-		newItem := reflect.New(modelType)
-		val := newItem.Elem()
-		scanArgs := prepareScanArgs(val, targetIndices)
-		if err := rows.Scan(scanArgs...); err != nil {
-			return nil, err
-		}
-		results = append(results, newItem.Interface().(*T))
-	}
-
-	return results, nil
+	return scanAll[T](rows, nil)
 }
 
 // buildRawSetQuery builds the set query with ? placeholders (no dialect replacement).

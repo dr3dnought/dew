@@ -238,27 +238,7 @@ func (s *Selector[T]) All(ctxs ...context.Context) ([]*T, error) {
 	}
 	defer rows.Close()
 
-	modelType := reflect.TypeOf(new(T)).Elem()
-	targetIndices, err := resolveScanIndices(modelType, s.columns)
-	if err != nil {
-		return nil, err
-	}
-
-	var results []*T
-
-	for rows.Next() {
-		newItem := reflect.New(modelType)
-		val := newItem.Elem()
-
-		scanArgs := prepareScanArgs(val, targetIndices)
-
-		if err := rows.Scan(scanArgs...); err != nil {
-			return nil, err
-		}
-		results = append(results, newItem.Interface().(*T))
-	}
-
-	return results, nil
+	return scanAll[T](rows, s.columns)
 }
 
 func (s *Selector[T]) First() (*T, error) {
@@ -390,6 +370,20 @@ func (s *Selector[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...cont
 func (s *Selector[T]) scanIntoSlice(rows *sql.Rows, sliceVal reflect.Value) error {
 	elemType := sliceVal.Type().Elem()
 
+	// Check if the element type implements RowScanner (via pointer receiver)
+	elemPtrType := reflect.PointerTo(elemType)
+	if elemType.Kind() == reflect.Struct && elemPtrType.Implements(reflect.TypeOf((*RowScanner)(nil)).Elem()) {
+		for rows.Next() {
+			newElemPtr := reflect.New(elemType)
+			scanner := newElemPtr.Interface().(RowScanner)
+			if err := scanner.ScanRow(rows); err != nil {
+				return err
+			}
+			sliceVal.Set(reflect.Append(sliceVal, newElemPtr.Elem()))
+		}
+		return nil
+	}
+
 	columns, err := rows.Columns()
 	if err != nil {
 		return err
@@ -441,6 +435,11 @@ func (s *Selector[T]) scanIntoSlice(rows *sql.Rows, sliceVal reflect.Value) erro
 func (s *Selector[T]) scanIntoOne(rows *sql.Rows, dest any) error {
 	if !rows.Next() {
 		return ErrNotFound
+	}
+
+	// Check if dest implements RowScanner
+	if scanner, ok := dest.(RowScanner); ok {
+		return scanner.ScanRow(rows)
 	}
 
 	columns, err := rows.Columns()
@@ -645,6 +644,53 @@ func buildFieldMap(typ reflect.Type) map[string]int {
 		fieldMap[key] = i
 	}
 	return fieldMap
+}
+
+// RowScanner allows a struct to define its own scanning logic instead of relying
+// on reflection. Implement this interface on *T to use custom scanning.
+//
+//	func (u *User) ScanRow(rows *sql.Rows) error {
+//	    return rows.Scan(&u.ID, &u.Name, &u.Email)
+//	}
+type RowScanner interface {
+	ScanRow(rows *sql.Rows) error
+}
+
+// scanAll scans all rows into []*T. If *T implements RowScanner, it uses
+// the custom scan method; otherwise falls back to reflection-based scanning.
+func scanAll[T any](rows *sql.Rows, columns []Column) ([]*T, error) {
+	// Check if *T implements RowScanner
+	var zero T
+	if _, ok := any(&zero).(RowScanner); ok {
+		var results []*T
+		for rows.Next() {
+			item := new(T)
+			if err := any(item).(RowScanner).ScanRow(rows); err != nil {
+				return nil, err
+			}
+			results = append(results, item)
+		}
+		return results, nil
+	}
+
+	// Reflection-based scanning
+	modelType := reflect.TypeOf(new(T)).Elem()
+	targetIndices, err := resolveScanIndices(modelType, columns)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []*T
+	for rows.Next() {
+		newItem := reflect.New(modelType)
+		val := newItem.Elem()
+		scanArgs := prepareScanArgs(val, targetIndices)
+		if err := rows.Scan(scanArgs...); err != nil {
+			return nil, err
+		}
+		results = append(results, newItem.Interface().(*T))
+	}
+	return results, nil
 }
 
 func resolveScanIndices(modelType reflect.Type, columns []Column) ([]int, error) {
