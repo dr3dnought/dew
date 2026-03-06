@@ -102,6 +102,55 @@ err := Users.Insert(db).
 // ON CONFLICT (email) DO UPDATE SET name = $3
 ```
 
+## Batch insert
+
+`Batch(size)` splits large inserts into multiple statements, avoiding database parameter limits (e.g. PostgreSQL's 65535 limit):
+
+```go
+err := Users.Insert(db).
+    Models(users...).
+    Batch(1000).
+    Exec()
+// Executes multiple INSERT statements, each with up to 1000 rows
+```
+
+Works with values too:
+
+```go
+err := Users.Insert(db).
+    Columns(Users.Name, Users.Email).
+    Values("Alice", "alice@example.com").
+    Values("Bob", "bob@example.com").
+    Values("Carol", "carol@example.com").
+    Batch(2).
+    Exec()
+// 2 statements: first with Alice+Bob, second with Carol
+```
+
+### Batch with upsert
+
+```go
+err := Users.Insert(db).
+    Models(users...).
+    OnConflict(Users.Email).
+    DoNothing().
+    Batch(1000).
+    Exec()
+```
+
+### Inspect batch queries
+
+`BatchQueries()` returns the SQL and args for each chunk without executing:
+
+```go
+queries, args, err := Users.Insert(db).
+    Models(users...).
+    Batch(1000).
+    BatchQueries()
+// queries[0] = "INSERT INTO users (...) VALUES ($1, ...), ($5, ...)"
+// args[0]    = [...]
+```
+
 ## ToSql
 
 ```go
