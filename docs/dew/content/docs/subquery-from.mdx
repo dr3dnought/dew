@@ -1,0 +1,40 @@
+---
+title: Subquery FROM
+description: Use a subquery as the FROM source.
+---
+
+`FromSub` lets you SELECT from a subquery instead of a table.
+
+## Basic usage
+
+```go
+sub := Users.From(db).
+    Select(Users.Name, dew.As(dew.Count(), "total")).
+    GroupBy(Users.Name)
+
+results, err := dew.FromSub[Result](db, sub, "sub").
+    Where(dew.Raw("sub.total > ?", 10)).
+    All()
+// SELECT * FROM (SELECT users.name, COUNT(*) AS total FROM users GROUP BY users.name) AS sub
+// WHERE sub.total > $1
+```
+
+## With set operations
+
+```go
+admins := Users.From(db).Select(Users.Name).Where(Users.Role.Eq("admin"))
+mods := Users.From(db).Select(Users.Name).Where(Users.Role.Eq("mod"))
+combined := dew.UnionAll[User](db, admins, mods)
+
+results, err := dew.FromSub[User](db, combined, "staff").All()
+// SELECT * FROM (...UNION ALL...) AS staff
+```
+
+## Constructor
+
+```go
+func FromSub[T any](db Querier, subQuery Expression, alias string) *Selector[T]
+```
+
+- `subQuery` — any `Expression` (a `Selector`, `SetQuery`, or `Raw`)
+- `alias` — the alias for the derived table (required by SQL)

@@ -156,6 +156,38 @@ sql, args := Users.From(db).Where(Users.Name.Eq("Alice")).ToSql()
 
 ## Custom scanning
 
+### RowScanner interface
+
+Implement `RowScanner` on your struct to bypass reflection-based scanning. Once defined, `All()`, `One()`, `First()`, and `Scan()` use it automatically:
+
+```go
+type RowScanner interface {
+    ScanRow(rows *sql.Rows) error
+}
+```
+
+```go
+type User struct {
+    ID    int
+    Name  string
+    Email string
+}
+
+func (u *User) ScanRow(rows *sql.Rows) error {
+    return rows.Scan(&u.ID, &u.Name, &u.Email)
+}
+
+// Now All/One/First use ScanRow instead of reflection:
+users, err := Users.From(db).All()
+user, err := Users.From(db).One()
+```
+
+This also works with `SetQuery.All()`:
+
+```go
+users, err := dew.Union[User](db, left, right).All()
+```
+
 ### Scan
 
 Scan into arbitrary destinations:

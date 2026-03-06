@@ -1,0 +1,70 @@
+---
+title: CTEs
+description: Common Table Expressions (WITH / WITH RECURSIVE).
+---
+
+Use `With()` to prepend CTE clauses to a SELECT query.
+
+## Basic CTE
+
+```go
+active := Users.From(db).Where(Users.Active.IsTrue())
+
+users, err := dew.From[User](db, dew.TableRef("active_users")).
+    With(dew.CTE("active_users", active)).
+    Where(Users.Age.Gt(30)).
+    All()
+// WITH active_users AS (SELECT * FROM users WHERE users.active = $1)
+// SELECT * FROM active_users WHERE active_users.age > $2
+```
+
+`dew.TableRef("name")` creates a table reference for querying the CTE by name.
+
+## Recursive CTE
+
+```go
+tree := dew.Raw("SELECT id, parent_id, name FROM categories WHERE parent_id IS NULL UNION ALL SELECT c.id, c.parent_id, c.name FROM categories c INNER JOIN tree t ON c.parent_id = t.id")
+
+categories, err := dew.From[Category](db, dew.TableRef("tree")).
+    With(dew.RecursiveCTE("tree", tree)).
+    All()
+// WITH RECURSIVE tree AS (...) SELECT * FROM tree
+```
+
+## Multiple CTEs
+
+```go
+admins := Users.From(db).Where(Users.Role.Eq("admin"))
+mods := Users.From(db).Where(Users.Role.Eq("mod"))
+
+users, err := dew.From[User](db, dew.TableRef("staff")).
+    With(
+        dew.CTE("admin_users", admins),
+        dew.CTE("mod_users", mods),
+        dew.CTE("staff", dew.Raw("SELECT * FROM admin_users UNION SELECT * FROM mod_users")),
+    ).
+    All()
+```
+
+## CTE with set operations
+
+A `SetQuery` implements `Expression`, so it can be used as a CTE body:
+
+```go
+left := Users.From(db).Select(Users.Name, Users.Age).Where(Users.Age.Gt(18))
+right := Users.From(db).Select(Users.Name, Users.Age).Where(Users.Name.Eq("Admin"))
+combined := dew.Union[User](db, left, right)
+
+users, err := dew.From[User](db, dew.TableRef("combined")).
+    With(dew.CTE("combined", combined)).
+    Where(dew.Raw("combined.age > ?", 25)).
+    All()
+```
+
+## Constructors
+
+| Function | Description |
+|----------|-------------|
+| `dew.CTE(name, query)` | Non-recursive CTE |
+| `dew.RecursiveCTE(name, query)` | Recursive CTE (`WITH RECURSIVE`) |
+| `dew.TableRef(name)` | Reference a CTE name as a table |

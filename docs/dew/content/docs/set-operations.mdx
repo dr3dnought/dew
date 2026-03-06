@@ -1,0 +1,92 @@
+---
+title: Set Operations
+description: UNION, UNION ALL, INTERSECT, and EXCEPT.
+---
+
+Set operations combine results from multiple SELECT queries.
+
+## UNION / UNION ALL
+
+```go
+admins := Users.From(db).Select(Users.Name).Where(Users.Role.Eq("admin"))
+mods := Users.From(db).Select(Users.Name).Where(Users.Role.Eq("mod"))
+
+// UNION (deduplicated)
+users, err := dew.Union[User](db, admins, mods).All()
+
+// UNION ALL (with duplicates)
+users, err := dew.UnionAll[User](db, admins, mods).All()
+```
+
+## INTERSECT / EXCEPT
+
+```go
+active := Users.From(db).Select(Users.Name).Where(Users.Active.IsTrue())
+premium := Users.From(db).Select(Users.Name).Where(Users.Plan.Eq("premium"))
+
+// Rows in both queries
+users, err := dew.Intersect[User](db, active, premium).All()
+
+// Rows in first but not second
+users, err := dew.Except[User](db, active, premium).All()
+```
+
+## Chaining
+
+Chain multiple set operations:
+
+```go
+admins := Users.From(db).Select(Users.Name).Where(Users.Role.Eq("admin"))
+mods := Users.From(db).Select(Users.Name).Where(Users.Role.Eq("mod"))
+editors := Users.From(db).Select(Users.Name).Where(Users.Role.Eq("editor"))
+
+users, err := dew.Union[User](db, admins, mods).
+    UnionAll(editors).
+    All()
+// (SELECT ... WHERE role = $1) UNION (SELECT ... WHERE role = $2) UNION ALL (SELECT ... WHERE role = $3)
+```
+
+## ORDER BY, LIMIT, OFFSET
+
+Applied to the combined result:
+
+```go
+users, err := dew.UnionAll[User](db, admins, mods).
+    OrderBy(dew.Asc(dew.Raw("name"))).
+    Limit(10).
+    Offset(5).
+    All()
+```
+
+## As subquery or CTE body
+
+`SetQuery` implements `Expression`, so it composes with CTEs and subquery FROM:
+
+```go
+combined := dew.Union[User](db, admins, mods)
+
+// As CTE
+users, err := dew.From[User](db, dew.TableRef("staff")).
+    With(dew.CTE("staff", combined)).
+    All()
+
+// As subquery FROM
+users, err := dew.FromSub[User](db, combined, "staff").
+    Where(dew.Raw("staff.age > ?", 25)).
+    All()
+```
+
+## ToSql
+
+```go
+sql, args := dew.Union[User](db, admins, mods).ToSql()
+```
+
+## Constructors
+
+| Function | SQL |
+|----------|-----|
+| `dew.Union[T](db, left, right)` | `UNION` |
+| `dew.UnionAll[T](db, left, right)` | `UNION ALL` |
+| `dew.Intersect[T](db, left, right)` | `INTERSECT` |
+| `dew.Except[T](db, left, right)` | `EXCEPT` |
