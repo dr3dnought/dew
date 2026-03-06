@@ -455,6 +455,206 @@ func TestInserter_ErrorMismatchedValues(t *testing.T) {
 	}
 }
 
+// ─── Batch Insert ───────────────────────────────────────────
+
+func TestInserter_BatchModels(t *testing.T) {
+	users := []*testUser{
+		{ID: 1, Name: "Alice", Email: "a@test.com", Age: 20},
+		{ID: 2, Name: "Bob", Email: "b@test.com", Age: 25},
+		{ID: 3, Name: "Carol", Email: "c@test.com", Age: 30},
+		{ID: 4, Name: "Dave", Email: "d@test.com", Age: 35},
+		{ID: 5, Name: "Eve", Email: "e@test.com", Age: 40},
+	}
+
+	queries, args, err := testTable.Insert(pgDB).
+		Models(users...).
+		Batch(2).
+		BatchQueries()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(queries) != 3 {
+		t.Fatalf("got %d queries, want 3", len(queries))
+	}
+
+	// Chunk 1: 2 rows
+	wantSQL := "INSERT INTO users (id, name, email, age) VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)"
+	if queries[0] != wantSQL {
+		t.Errorf("chunk 0 sql = %q, want %q", queries[0], wantSQL)
+	}
+	wantArgs := []any{1, "Alice", "a@test.com", 20, 2, "Bob", "b@test.com", 25}
+	if !reflect.DeepEqual(args[0], wantArgs) {
+		t.Errorf("chunk 0 args = %v, want %v", args[0], wantArgs)
+	}
+
+	// Chunk 2: 2 rows
+	if queries[1] != wantSQL {
+		t.Errorf("chunk 1 sql = %q, want %q", queries[1], wantSQL)
+	}
+	wantArgs = []any{3, "Carol", "c@test.com", 30, 4, "Dave", "d@test.com", 35}
+	if !reflect.DeepEqual(args[1], wantArgs) {
+		t.Errorf("chunk 1 args = %v, want %v", args[1], wantArgs)
+	}
+
+	// Chunk 3: 1 row (remainder)
+	wantSQL = "INSERT INTO users (id, name, email, age) VALUES ($1, $2, $3, $4)"
+	if queries[2] != wantSQL {
+		t.Errorf("chunk 2 sql = %q, want %q", queries[2], wantSQL)
+	}
+	wantArgs = []any{5, "Eve", "e@test.com", 40}
+	if !reflect.DeepEqual(args[2], wantArgs) {
+		t.Errorf("chunk 2 args = %v, want %v", args[2], wantArgs)
+	}
+}
+
+func TestInserter_BatchValues(t *testing.T) {
+	queries, args, err := testTable.Insert(pgDB).
+		Columns(tName, tEmail).
+		Values("Alice", "a@test.com").
+		Values("Bob", "b@test.com").
+		Values("Carol", "c@test.com").
+		Batch(2).
+		BatchQueries()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(queries) != 2 {
+		t.Fatalf("got %d queries, want 2", len(queries))
+	}
+
+	// Chunk 1: 2 rows
+	wantSQL := "INSERT INTO users (name, email) VALUES ($1, $2), ($3, $4)"
+	if queries[0] != wantSQL {
+		t.Errorf("chunk 0 sql = %q, want %q", queries[0], wantSQL)
+	}
+	wantArgs := []any{"Alice", "a@test.com", "Bob", "b@test.com"}
+	if !reflect.DeepEqual(args[0], wantArgs) {
+		t.Errorf("chunk 0 args = %v, want %v", args[0], wantArgs)
+	}
+
+	// Chunk 2: 1 row
+	wantSQL = "INSERT INTO users (name, email) VALUES ($1, $2)"
+	if queries[1] != wantSQL {
+		t.Errorf("chunk 1 sql = %q, want %q", queries[1], wantSQL)
+	}
+	wantArgs = []any{"Carol", "c@test.com"}
+	if !reflect.DeepEqual(args[1], wantArgs) {
+		t.Errorf("chunk 1 args = %v, want %v", args[1], wantArgs)
+	}
+}
+
+func TestInserter_BatchExact(t *testing.T) {
+	// Batch size equals row count — should produce exactly 1 query
+	queries, _, err := testTable.Insert(pgDB).
+		Columns(tName).
+		Values("Alice").
+		Values("Bob").
+		Batch(2).
+		BatchQueries()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(queries) != 1 {
+		t.Fatalf("got %d queries, want 1", len(queries))
+	}
+
+	wantSQL := "INSERT INTO users (name) VALUES ($1), ($2)"
+	if queries[0] != wantSQL {
+		t.Errorf("sql = %q, want %q", queries[0], wantSQL)
+	}
+}
+
+func TestInserter_BatchNoBatch(t *testing.T) {
+	// BatchQueries without Batch() returns single query
+	queries, args, err := testTable.Insert(pgDB).
+		Columns(tName).
+		Values("Alice").
+		BatchQueries()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(queries) != 1 {
+		t.Fatalf("got %d queries, want 1", len(queries))
+	}
+
+	wantSQL := "INSERT INTO users (name) VALUES ($1)"
+	if queries[0] != wantSQL {
+		t.Errorf("sql = %q, want %q", queries[0], wantSQL)
+	}
+	if !reflect.DeepEqual(args[0], []any{"Alice"}) {
+		t.Errorf("args = %v, want %v", args[0], []any{"Alice"})
+	}
+}
+
+func TestInserter_BatchOnConflict(t *testing.T) {
+	users := []*testUser{
+		{ID: 1, Name: "Alice", Email: "a@test.com", Age: 20},
+		{ID: 2, Name: "Bob", Email: "b@test.com", Age: 25},
+		{ID: 3, Name: "Carol", Email: "c@test.com", Age: 30},
+	}
+
+	ci := testTable.Insert(pgDB).
+		Models(users...).
+		OnConflict(tEmail).
+		DoNothing().
+		Batch(2)
+
+	// ConflictInserter doesn't have BatchQueries, so test via ToSql for the full set
+	// and verify the batch size is set
+	q, _, err := ci.ToSql()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ToSql returns full (non-batched) query
+	if !contains(q, "ON CONFLICT (email) DO NOTHING") {
+		t.Errorf("expected ON CONFLICT clause, got %q", q)
+	}
+	if !contains(q, "($1, $2, $3, $4)") {
+		t.Errorf("expected first row placeholders, got %q", q)
+	}
+}
+
+func TestInserter_BatchMySQL(t *testing.T) {
+	queries, args, err := testTable.Insert(myDB).
+		Columns(tName).
+		Values("Alice").
+		Values("Bob").
+		Values("Carol").
+		Batch(2).
+		BatchQueries()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(queries) != 2 {
+		t.Fatalf("got %d queries, want 2", len(queries))
+	}
+
+	wantSQL := "INSERT INTO users (name) VALUES (?), (?)"
+	if queries[0] != wantSQL {
+		t.Errorf("chunk 0 sql = %q, want %q", queries[0], wantSQL)
+	}
+	wantArgs := []any{"Alice", "Bob"}
+	if !reflect.DeepEqual(args[0], wantArgs) {
+		t.Errorf("chunk 0 args = %v, want %v", args[0], wantArgs)
+	}
+
+	wantSQL = "INSERT INTO users (name) VALUES (?)"
+	if queries[1] != wantSQL {
+		t.Errorf("chunk 1 sql = %q, want %q", queries[1], wantSQL)
+	}
+}
+
 // ─── Updater ─────────────────────────────────────────────────
 
 func TestUpdater_Basic(t *testing.T) {

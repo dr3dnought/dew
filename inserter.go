@@ -23,6 +23,7 @@ type Inserter[T any] struct {
 	models  []*T
 
 	returningCols []Column
+	batchSize     int
 }
 
 func Insert[T any](db Querier, table Tabler) *Inserter[T] {
@@ -49,6 +50,11 @@ func (i *Inserter[T]) Models(models ...*T) *Inserter[T] {
 
 func (i *Inserter[T]) Returning(cols ...Column) *Inserter[T] {
 	i.returningCols = append(i.returningCols, cols...)
+	return i
+}
+
+func (i *Inserter[T]) Batch(size int) *Inserter[T] {
+	i.batchSize = size
 	return i
 }
 
@@ -215,6 +221,10 @@ func (i *Inserter[T]) Exec(ctxs ...context.Context) error {
 		ctx = ctxs[0]
 	}
 
+	if i.batchSize > 0 {
+		return i.execBatch(ctx)
+	}
+
 	query, args, err := i.buildInsertQuery()
 	if err != nil {
 		return err
@@ -224,8 +234,106 @@ func (i *Inserter[T]) Exec(ctxs ...context.Context) error {
 	return err
 }
 
+func (i *Inserter[T]) execBatch(ctx context.Context) error {
+	if len(i.models) > 0 {
+		for start := 0; start < len(i.models); start += i.batchSize {
+			end := min(start+i.batchSize, len(i.models))
+			chunk := &Inserter[T]{
+				db:     i.db,
+				table:  i.table,
+				models: i.models[start:end],
+			}
+			query, args, err := chunk.buildInsertQuery()
+			if err != nil {
+				return err
+			}
+			if _, err := i.db.ExecContext(ctx, query, args...); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	if len(i.values) > 0 {
+		for start := 0; start < len(i.values); start += i.batchSize {
+			end := min(start+i.batchSize, len(i.values))
+			chunk := &Inserter[T]{
+				db:      i.db,
+				table:   i.table,
+				columns: i.columns,
+				values:  i.values[start:end],
+			}
+			query, args, err := chunk.buildInsertQuery()
+			if err != nil {
+				return err
+			}
+			if _, err := i.db.ExecContext(ctx, query, args...); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	return fmt.Errorf("dew: no data to insert (call Models or Values)")
+}
+
 func (i *Inserter[T]) ToSql() (string, []any, error) {
 	return i.buildInsertQuery()
+}
+
+// BatchQueries returns the SQL and args for each batch chunk.
+// If Batch() was not called, returns a single-element slice.
+func (i *Inserter[T]) BatchQueries() ([]string, [][]any, error) {
+	if i.batchSize <= 0 {
+		q, a, err := i.buildInsertQuery()
+		if err != nil {
+			return nil, nil, err
+		}
+		return []string{q}, [][]any{a}, nil
+	}
+
+	if len(i.models) > 0 {
+		var queries []string
+		var allArgs [][]any
+		for start := 0; start < len(i.models); start += i.batchSize {
+			end := min(start+i.batchSize, len(i.models))
+			chunk := &Inserter[T]{
+				db:    i.db,
+				table: i.table,
+				models: i.models[start:end],
+			}
+			q, a, err := chunk.buildInsertQuery()
+			if err != nil {
+				return nil, nil, err
+			}
+			queries = append(queries, q)
+			allArgs = append(allArgs, a)
+		}
+		return queries, allArgs, nil
+	}
+
+	if len(i.values) > 0 {
+		var queries []string
+		var allArgs [][]any
+		for start := 0; start < len(i.values); start += i.batchSize {
+			end := min(start+i.batchSize, len(i.values))
+			chunk := &Inserter[T]{
+				db:      i.db,
+				table:   i.table,
+				columns: i.columns,
+				values:  i.values[start:end],
+			}
+			q, a, err := chunk.buildInsertQuery()
+			if err != nil {
+				return nil, nil, err
+			}
+			queries = append(queries, q)
+			allArgs = append(allArgs, a)
+		}
+		return queries, allArgs, nil
+	}
+
+	return nil, nil, fmt.Errorf("dew: no data to insert (call Models or Values)")
 }
 
 func (i *Inserter[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...context.Context) ([]*T, error) {
@@ -279,6 +387,11 @@ func newConflictInserter[T any](insertor *Inserter[T]) *ConflictInserter[T] {
 		Inserter:     insertor,
 		conflictSets: make(map[string]any),
 	}
+}
+
+func (i *ConflictInserter[T]) Batch(size int) *ConflictInserter[T] {
+	i.batchSize = size
+	return i
 }
 
 func (i *ConflictInserter[T]) DoNothing() *ConflictInserter[T] {
@@ -373,6 +486,10 @@ func (i *ConflictInserter[T]) Exec(ctxs ...context.Context) error {
 		ctx = ctxs[0]
 	}
 
+	if i.batchSize > 0 {
+		return i.execBatch(ctx)
+	}
+
 	query, args, err := i.buildInsertQuery()
 	if err != nil {
 		return err
@@ -380,6 +497,59 @@ func (i *ConflictInserter[T]) Exec(ctxs ...context.Context) error {
 
 	_, err = i.db.ExecContext(ctx, query, args...)
 	return err
+}
+
+func (i *ConflictInserter[T]) execBatch(ctx context.Context) error {
+	if len(i.models) > 0 {
+		for start := 0; start < len(i.models); start += i.batchSize {
+			end := min(start+i.batchSize, len(i.models))
+			chunk := &ConflictInserter[T]{
+				Inserter: &Inserter[T]{
+					db:    i.db,
+					table: i.table,
+					models: i.models[start:end],
+				},
+				conflictTargets: i.conflictTargets,
+				conflictAction:  i.conflictAction,
+				conflictSets:    i.conflictSets,
+			}
+			query, args, err := chunk.buildInsertQuery()
+			if err != nil {
+				return err
+			}
+			if _, err := i.db.ExecContext(ctx, query, args...); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	if len(i.values) > 0 {
+		for start := 0; start < len(i.values); start += i.batchSize {
+			end := min(start+i.batchSize, len(i.values))
+			chunk := &ConflictInserter[T]{
+				Inserter: &Inserter[T]{
+					db:      i.db,
+					table:   i.table,
+					columns: i.columns,
+					values:  i.values[start:end],
+				},
+				conflictTargets: i.conflictTargets,
+				conflictAction:  i.conflictAction,
+				conflictSets:    i.conflictSets,
+			}
+			query, args, err := chunk.buildInsertQuery()
+			if err != nil {
+				return err
+			}
+			if _, err := i.db.ExecContext(ctx, query, args...); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	return fmt.Errorf("dew: no data to insert (call Models or Values)")
 }
 
 func (i *ConflictInserter[T]) ToSql() (string, []any, error) {
