@@ -272,6 +272,273 @@ func TestSelector_Clone(t *testing.T) {
 	}
 }
 
+func TestSelector_RightJoin(t *testing.T) {
+	ordersTable := NewTable[testUser]("orders", PostgreSQLDialect{})
+	orderUserID := ordersTable.IntColumn("user_id")
+
+	sql, _ := testTable.From(pgDB).
+		RightJoin(ordersTable, tID, orderUserID).
+		ToSql()
+
+	want := "SELECT * FROM users RIGHT JOIN orders ON users.id = orders.user_id"
+	if sql != want {
+		t.Errorf("got %q, want %q", sql, want)
+	}
+}
+
+func TestSelector_MultipleJoins(t *testing.T) {
+	ordersTable := NewTable[testUser]("orders", PostgreSQLDialect{})
+	orderUserID := ordersTable.IntColumn("user_id")
+	paymentsTable := NewTable[testUser]("payments", PostgreSQLDialect{})
+	paymentOrderID := paymentsTable.IntColumn("order_id")
+	orderID := ordersTable.IntColumn("id")
+
+	sql, _ := testTable.From(pgDB).
+		InnerJoin(ordersTable, tID, orderUserID).
+		LeftJoin(paymentsTable, orderID, paymentOrderID).
+		ToSql()
+
+	want := "SELECT * FROM users INNER JOIN orders ON users.id = orders.user_id LEFT JOIN payments ON orders.id = payments.order_id"
+	if sql != want {
+		t.Errorf("got %q, want %q", sql, want)
+	}
+}
+
+func TestSelector_DistinctWithWhere(t *testing.T) {
+	sql, args := testTable.From(pgDB).
+		Distinct(tName).
+		Where(tAge.Gt(18)).
+		ToSql()
+
+	wantSQL := "SELECT DISTINCT users.name FROM users WHERE users.age > $1"
+	wantArgs := []any{18}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+func TestSelector_ScanWith_ToSql(t *testing.T) {
+	sql, args := testTable.From(pgDB).
+		Select(tName, tEmail).
+		Where(tAge.Gt(21)).
+		ToSql()
+
+	wantSQL := "SELECT users.name, users.email FROM users WHERE users.age > $1"
+	wantArgs := []any{21}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+func TestSelector_MSSQL(t *testing.T) {
+	sql, args := testTable.From(mssqlDB).
+		Select(tName).
+		Where(tAge.Gt(18), tName.NotEq("Admin")).
+		OrderBy(Asc(tName)).
+		Limit(10).
+		ToSql()
+
+	wantSQL := "SELECT users.name FROM users WHERE users.age > @p1 AND users.name != @p2 ORDER BY users.name ASC LIMIT 10"
+	wantArgs := []any{18, "Admin"}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+func TestSelector_CloneWithCTE(t *testing.T) {
+	sub := testTable.From(pgDB).Where(tAge.Gt(18))
+	base := From[testUser](pgDB, TableRef("adults")).
+		With(CTE("adults", sub))
+
+	clone := base.Clone()
+	clone.Where(tName.Eq("Alice"))
+
+	baseSql, baseArgs := base.ToSql()
+	cloneSql, cloneArgs := clone.ToSql()
+
+	wantBase := "WITH adults AS (SELECT * FROM users WHERE users.age > $1) SELECT * FROM adults"
+	if baseSql != wantBase {
+		t.Errorf("base sql = %q, want %q", baseSql, wantBase)
+	}
+	if len(baseArgs) != 1 {
+		t.Errorf("base args = %v, want 1 arg", baseArgs)
+	}
+
+	wantClone := "WITH adults AS (SELECT * FROM users WHERE users.age > $1) SELECT * FROM adults WHERE users.name = $2"
+	if cloneSql != wantClone {
+		t.Errorf("clone sql = %q, want %q", cloneSql, wantClone)
+	}
+	if len(cloneArgs) != 2 {
+		t.Errorf("clone args = %v, want 2 args", cloneArgs)
+	}
+}
+
+func TestSelector_CloneWithFromSub(t *testing.T) {
+	sub := testTable.From(pgDB).Select(tName, tAge).Where(tAge.Gt(21))
+	base := FromSub[testUser](pgDB, sub, "sub")
+
+	clone := base.Clone()
+	clone.Where(Raw("sub.age < ?", 30))
+
+	baseSql, baseArgs := base.ToSql()
+	cloneSql, cloneArgs := clone.ToSql()
+
+	wantBase := "SELECT * FROM (SELECT users.name, users.age FROM users WHERE users.age > $1) AS sub"
+	if baseSql != wantBase {
+		t.Errorf("base sql = %q, want %q", baseSql, wantBase)
+	}
+	if len(baseArgs) != 1 {
+		t.Errorf("base args = %v, want 1 arg", baseArgs)
+	}
+
+	wantClone := "SELECT * FROM (SELECT users.name, users.age FROM users WHERE users.age > $1) AS sub WHERE sub.age < $2"
+	if cloneSql != wantClone {
+		t.Errorf("clone sql = %q, want %q", cloneSql, wantClone)
+	}
+	if len(cloneArgs) != 2 {
+		t.Errorf("clone args = %v, want 2 args", cloneArgs)
+	}
+}
+
+func TestSelector_SetQueryAsFromSub(t *testing.T) {
+	left := testTable.From(pgDB).Select(tName).Where(tAge.Gt(18))
+	right := testTable.From(pgDB).Select(tName).Where(tName.Eq("Admin"))
+	combined := Union[testUser](pgDB, left, right)
+
+	sql, args := FromSub[testUser](pgDB, combined, "staff").
+		Where(Raw("1=1")).
+		ToSql()
+
+	wantSQL := "SELECT * FROM ((SELECT users.name FROM users WHERE users.age > $1) UNION (SELECT users.name FROM users WHERE users.name = $2)) AS staff WHERE 1=1"
+	wantArgs := []any{18, "Admin"}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+func TestSelector_WhereEmpty(t *testing.T) {
+	// Empty expression should be skipped
+	sql, _ := testTable.From(pgDB).
+		Where(Raw("")).
+		ToSql()
+
+	want := "SELECT * FROM users"
+	if sql != want {
+		t.Errorf("got %q, want %q", sql, want)
+	}
+}
+
+func TestSelector_LimitOffset(t *testing.T) {
+	sql, _ := testTable.From(pgDB).Offset(5).ToSql()
+	// offset without limit
+	want := "SELECT * FROM users OFFSET 5"
+	if sql != want {
+		t.Errorf("got %q, want %q", sql, want)
+	}
+}
+
+func TestSelector_SelectWithAlias(t *testing.T) {
+	sql, _ := testTable.From(pgDB).
+		Select(tName, As(Count(), "total")).
+		GroupBy(tName).
+		ToSql()
+
+	want := "SELECT users.name, COUNT(*) AS total FROM users GROUP BY users.name"
+	if sql != want {
+		t.Errorf("got %q, want %q", sql, want)
+	}
+}
+
+func TestSelector_NestedAndOr(t *testing.T) {
+	sql, args := testTable.From(pgDB).
+		Where(And(
+			tAge.Gte(18),
+			Or(
+				tName.Eq("Alice"),
+				tName.Eq("Bob"),
+			),
+		)).
+		ToSql()
+
+	wantSQL := "SELECT * FROM users WHERE (users.age >= $1 AND (users.name = $2 OR users.name = $3))"
+	wantArgs := []any{18, "Alice", "Bob"}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+func TestSelector_HavingMultiple(t *testing.T) {
+	sql, args := testTable.From(pgDB).
+		Select(tName, Count()).
+		GroupBy(tName).
+		Having(Raw("COUNT(*) > ?", 5), Raw("COUNT(*) < ?", 100)).
+		ToSql()
+
+	wantSQL := "SELECT users.name, COUNT(*) FROM users GROUP BY users.name HAVING COUNT(*) > $1 AND COUNT(*) < $2"
+	wantArgs := []any{5, 100}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+func TestSelector_GroupByMultiple(t *testing.T) {
+	sql, _ := testTable.From(pgDB).
+		Select(tName, tAge, Count()).
+		GroupBy(tName, tAge).
+		ToSql()
+
+	want := "SELECT users.name, users.age, COUNT(*) FROM users GROUP BY users.name, users.age"
+	if sql != want {
+		t.Errorf("got %q, want %q", sql, want)
+	}
+}
+
+func TestSelector_JoinWithWhere(t *testing.T) {
+	ordersTable := NewTable[testUser]("orders", PostgreSQLDialect{})
+	orderUserID := ordersTable.IntColumn("user_id")
+	orderTotal := ordersTable.FloatColumn("total")
+
+	sql, args := testTable.From(pgDB).
+		Select(tName, orderTotal).
+		InnerJoin(ordersTable, tID, orderUserID).
+		Where(orderTotal.Gt(100.0)).
+		ToSql()
+
+	wantSQL := "SELECT users.name, orders.total FROM users INNER JOIN orders ON users.id = orders.user_id WHERE orders.total > $1"
+	wantArgs := []any{100.0}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
 // ─── Inserter ────────────────────────────────────────────────
 
 func TestInserter_SingleRow(t *testing.T) {
