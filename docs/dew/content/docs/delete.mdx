@@ -83,3 +83,15 @@ sql, args, err := Users.Delete(db).
     Where(Users.ID.Eq(1)).
     ToSql()
 ```
+
+## Context
+
+```go
+err := Users.Delete(db).
+    Where(Users.ID.Eq(1)).
+    Exec(ctx)
+
+n, err := Users.Delete(db).
+    Where(Users.Age.Lt(18)).
+    RowsAffected(ctx)
+```

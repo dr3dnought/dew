@@ -77,7 +77,11 @@ inserted, err := Users.Insert(db).
 
 ## On conflict (upsert)
 
+`OnConflict()` starts a conflict handler. Specify the conflict target columns, then choose an action.
+
 ### Do nothing
+
+Skip rows that conflict:
 
 ```go
 err := Users.Insert(db).
@@ -86,10 +90,13 @@ err := Users.Insert(db).
     OnConflict(Users.Email).
     DoNothing().
     Exec()
-// INSERT INTO users (name, email) VALUES ($1, $2) ON CONFLICT (email) DO NOTHING
+// INSERT INTO users (name, email) VALUES ($1, $2)
+// ON CONFLICT (email) DO NOTHING
 ```
 
 ### Do update
+
+Update specific columns on conflict:
 
 ```go
 err := Users.Insert(db).
@@ -100,6 +107,74 @@ err := Users.Insert(db).
     Exec()
 // INSERT INTO users (name, email) VALUES ($1, $2)
 // ON CONFLICT (email) DO UPDATE SET name = $3
+```
+
+### Update with EXCLUDED
+
+Use `dew.Raw` to reference the `EXCLUDED` row (the row that failed to insert):
+
+```go
+err := Users.Insert(db).
+    Columns(Users.Name, Users.Email).
+    Values("Alice", "alice@example.com").
+    OnConflict(Users.Email).
+    SetUpdate(Users.Name, dew.Raw("EXCLUDED.name")).
+    Exec()
+// INSERT INTO users (name, email) VALUES ($1, $2)
+// ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name
+```
+
+### Multiple conflict targets
+
+```go
+err := Users.Insert(db).
+    Models(user).
+    OnConflict(Users.Email, Users.TenantID).
+    DoNothing().
+    Exec()
+// ON CONFLICT (email, tenant_id) DO NOTHING
+```
+
+### Multiple SET updates
+
+Chain `SetUpdate` calls:
+
+```go
+err := Users.Insert(db).
+    Models(user).
+    OnConflict(Users.Email).
+    SetUpdate(Users.Name, dew.Raw("EXCLUDED.name")).
+    SetUpdate(Users.Age, dew.Raw("EXCLUDED.age")).
+    Exec()
+// ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, age = EXCLUDED.age
+```
+
+### Upsert with RETURNING
+
+```go
+result, err := Users.Insert(db).
+    Columns(Users.Name, Users.Email).
+    Values("Alice", "alice@example.com").
+    OnConflict(Users.Email).
+    SetUpdate(Users.Name, dew.Raw("EXCLUDED.name")).
+    Returning(Users.ID, Users.Name).
+    ScanWith(func(rows *sql.Rows) (*User, error) {
+        var u User
+        err := rows.Scan(&u.ID, &u.Name)
+        return &u, err
+    })
+```
+
+### Upsert with batch
+
+```go
+err := Users.Insert(db).
+    Models(users...).
+    OnConflict(Users.Email).
+    DoNothing().
+    Batch(1000).
+    Exec()
+// Splits into chunked INSERT ... ON CONFLICT statements
 ```
 
 ## Batch insert

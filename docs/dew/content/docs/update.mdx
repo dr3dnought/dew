@@ -77,6 +77,21 @@ err := Users.Update(db).
     Scan(ctx, &id, &name)
 ```
 
+### ScanWith + Returning
+
+```go
+updated, err := Users.Update(db).
+    Set(Users.Name, "Bob").
+    Where(Users.Age.Gt(18)).
+    Returning(Users.ID, Users.Name).
+    ScanWith(func(rows *sql.Rows) (*User, error) {
+        var u User
+        err := rows.Scan(&u.ID, &u.Name)
+        return &u, err
+    })
+// updated is []*User with all affected rows
+```
+
 ## RowsAffected
 
 ```go
@@ -102,4 +117,18 @@ sql, args, err := Users.Update(db).
     Set(Users.Name, "Bob").
     Where(Users.ID.Eq(1)).
     ToSql()
+```
+
+## Context
+
+```go
+err := Users.Update(db).
+    Set(Users.Name, "Bob").
+    Where(Users.ID.Eq(1)).
+    Exec(ctx)
+
+n, err := Users.Update(db).
+    Set(Users.Name, "Bob").
+    Where(Users.Age.Lt(18)).
+    RowsAffected(ctx)
 ```

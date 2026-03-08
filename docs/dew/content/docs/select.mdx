@@ -84,12 +84,53 @@ users, err := Users.From(db).Distinct(Users.Name, Users.Email).All()
 
 ## Joins
 
+### Inner join
+
 ```go
 users, err := Users.From(db).
     InnerJoin(Orders, Users.ID, Orders.UserID).
     All()
+// SELECT * FROM users INNER JOIN orders ON users.id = orders.user_id
+```
 
-// Also available: LeftJoin, RightJoin
+### Left / Right join
+
+```go
+users, err := Users.From(db).
+    LeftJoin(Orders, Users.ID, Orders.UserID).
+    All()
+// SELECT * FROM users LEFT JOIN orders ON users.id = orders.user_id
+
+users, err := Users.From(db).
+    RightJoin(Orders, Users.ID, Orders.UserID).
+    All()
+// SELECT * FROM users RIGHT JOIN orders ON users.id = orders.user_id
+```
+
+### Multiple joins
+
+```go
+users, err := Users.From(db).
+    Select(Users.Name, Orders.Total, Payments.Amount).
+    InnerJoin(Orders, Users.ID, Orders.UserID).
+    LeftJoin(Payments, Orders.ID, Payments.OrderID).
+    All()
+// SELECT users.name, orders.total, payments.amount FROM users
+// INNER JOIN orders ON users.id = orders.user_id
+// LEFT JOIN payments ON orders.id = payments.order_id
+```
+
+### Join with conditions
+
+```go
+users, err := Users.From(db).
+    Select(Users.Name, Orders.Total).
+    InnerJoin(Orders, Users.ID, Orders.UserID).
+    Where(Orders.Total.Gt(100.0)).
+    All()
+// SELECT users.name, orders.total FROM users
+// INNER JOIN orders ON users.id = orders.user_id
+// WHERE orders.total > $1
 ```
 
 ## Group by and having
