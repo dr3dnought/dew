@@ -2,6 +2,8 @@ package dew
 
 import (
 	"database/sql"
+	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -1430,6 +1432,133 @@ func TestRowScanner_NotDetected(t *testing.T) {
 	var zero testUser
 	if _, ok := any(&zero).(RowScanner); ok {
 		t.Fatal("*testUser should NOT implement RowScanner")
+	}
+}
+
+// ─── ErrorMapper ─────────────────────────────────────────────
+
+func TestDB_MapError_Nil(t *testing.T) {
+	db := &DB{dialect: PostgreSQLDialect{}}
+	// No error mapper — should return original error
+	if got := db.mapError(nil); got != nil {
+		t.Errorf("mapError(nil) = %v, want nil", got)
+	}
+	err := fmt.Errorf("some error")
+	if got := db.mapError(err); got != err {
+		t.Errorf("mapError(err) = %v, want %v", got, err)
+	}
+}
+
+func TestDB_MapError_WithMapper(t *testing.T) {
+	mapper := func(err error) error {
+		if err.Error() == "unique_violation" {
+			return ErrUniqueViolation
+		}
+		return err
+	}
+	db := &DB{dialect: PostgreSQLDialect{}, errorMapper: mapper}
+
+	// Mapped error
+	err := fmt.Errorf("unique_violation")
+	if got := db.mapError(err); !errors.Is(got, ErrUniqueViolation) {
+		t.Errorf("mapError() = %v, want ErrUniqueViolation", got)
+	}
+
+	// Unmapped error passes through
+	other := fmt.Errorf("other error")
+	if got := db.mapError(other); got != other {
+		t.Errorf("mapError() = %v, want %v", got, other)
+	}
+
+	// Nil passes through even with mapper
+	if got := db.mapError(nil); got != nil {
+		t.Errorf("mapError(nil) = %v, want nil", got)
+	}
+}
+
+func TestTx_MapError(t *testing.T) {
+	mapper := func(err error) error {
+		if err.Error() == "fk_violation" {
+			return ErrForeignKey
+		}
+		return err
+	}
+	tx := &Tx{dialect: PostgreSQLDialect{}, errorMapper: mapper}
+
+	err := fmt.Errorf("fk_violation")
+	if got := tx.mapError(err); !errors.Is(got, ErrForeignKey) {
+		t.Errorf("tx.mapError() = %v, want ErrForeignKey", got)
+	}
+}
+
+func TestWithErrorMapper_Option(t *testing.T) {
+	called := false
+	mapper := func(err error) error {
+		called = true
+		return err
+	}
+	db := &DB{dialect: PostgreSQLDialect{}}
+	opt := WithErrorMapper(mapper)
+	opt(db)
+
+	if db.errorMapper == nil {
+		t.Fatal("errorMapper should be set")
+	}
+	db.mapError(fmt.Errorf("test"))
+	if !called {
+		t.Fatal("mapper should have been called")
+	}
+}
+
+func TestNewDB_WithErrorMapper(t *testing.T) {
+	mapper := func(err error) error { return ErrNotFound }
+	db := NewDB(nil, PostgreSQLDialect{}, WithErrorMapper(mapper))
+
+	if db.errorMapper == nil {
+		t.Fatal("errorMapper should be set via NewDB option")
+	}
+	err := fmt.Errorf("anything")
+	if got := db.mapError(err); !errors.Is(got, ErrNotFound) {
+		t.Errorf("got %v, want ErrNotFound", got)
+	}
+}
+
+func TestDB_MapError_SentinelErrors(t *testing.T) {
+	mapper := func(err error) error {
+		msg := err.Error()
+		switch msg {
+		case "unique":
+			return ErrUniqueViolation
+		case "fk":
+			return ErrForeignKey
+		case "check":
+			return ErrCheckViolation
+		case "notnull":
+			return ErrNotNull
+		case "notfound":
+			return ErrNotFound
+		default:
+			return err
+		}
+	}
+	db := &DB{dialect: PostgreSQLDialect{}, errorMapper: mapper}
+
+	tests := []struct {
+		input string
+		want  error
+	}{
+		{"unique", ErrUniqueViolation},
+		{"fk", ErrForeignKey},
+		{"check", ErrCheckViolation},
+		{"notnull", ErrNotNull},
+		{"notfound", ErrNotFound},
+	}
+
+	for _, tt := range tests {
+		got := db.mapError(errors.New(tt.input))
+		if !errors.Is(got, tt.want) {
+			t.Errorf("mapError(%q) = %v, want %v", tt.input, got, tt.want)
+		}
 	}
 }
 

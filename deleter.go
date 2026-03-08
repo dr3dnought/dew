@@ -40,7 +40,7 @@ func (d *Deleter[T]) Exec(ctxs ...context.Context) error {
 	}
 
 	_, err = d.db.ExecContext(ctx, query, args...)
-	return err
+	return d.db.mapError(err)
 }
 
 func (d *Deleter[T]) Scan(ctx context.Context, dest ...any) error {
@@ -57,7 +57,7 @@ func (d *Deleter[T]) Scan(ctx context.Context, dest ...any) error {
 		ctx = context.Background()
 	}
 
-	return d.db.QueryRowContext(ctx, query, args...).Scan(dest...)
+	return d.db.mapError(d.db.QueryRowContext(ctx, query, args...).Scan(dest...))
 }
 
 func (d *Deleter[T]) RowsAffected(ctxs ...context.Context) (int64, error) {
@@ -70,7 +70,7 @@ func (d *Deleter[T]) RowsAffected(ctxs ...context.Context) (int64, error) {
 
 	res, err := d.db.ExecContext(ctx, query, args...)
 	if err != nil {
-		return 0, err
+		return 0, d.db.mapError(err)
 	}
 
 	return res.RowsAffected()

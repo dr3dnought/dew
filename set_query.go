@@ -112,11 +112,15 @@ func (sq *SetQuery[T]) All(ctxs ...context.Context) ([]*T, error) {
 
 	rows, err := sq.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, sq.db.mapError(err)
 	}
 	defer rows.Close()
 
-	return scanAll[T](rows, nil)
+	results, err := scanAll[T](rows, nil)
+	if err != nil {
+		return nil, sq.db.mapError(err)
+	}
+	return results, nil
 }
 
 // buildRawSetQuery builds the set query with ? placeholders (no dialect replacement).

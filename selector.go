@@ -234,11 +234,12 @@ func (s *Selector[T]) All(ctxs ...context.Context) ([]*T, error) {
 
 	rows, err := s.db.QueryContext(ctx, query, s.args...)
 	if err != nil {
-		return nil, err
+		return nil, s.db.mapError(err)
 	}
 	defer rows.Close()
 
-	return scanAll[T](rows, s.columns)
+	results, err := scanAll[T](rows, s.columns)
+	return results, s.db.mapError(err)
 }
 
 func (s *Selector[T]) First() (*T, error) {
@@ -273,7 +274,7 @@ func (s *Selector[T]) Exists(ctxs ...context.Context) (bool, error) {
 		return false, nil
 	}
 	if err != nil {
-		return false, err
+		return false, s.db.mapError(err)
 	}
 
 	return true, nil
@@ -294,7 +295,7 @@ func (s *Selector[T]) Count(ctxs ...context.Context) (int64, error) {
 	err := s.db.QueryRowContext(ctx, query, clone.args...).Scan(&count)
 
 	if err != nil {
-		return 0, err
+		return 0, s.db.mapError(err)
 	}
 
 	return count, nil
@@ -328,15 +329,15 @@ func (s *Selector[T]) ScanCtx(ctx context.Context, dest ...any) error {
 	}
 	rows, err := s.db.QueryContext(ctx, query, s.args...)
 	if err != nil {
-		return err
+		return s.db.mapError(err)
 	}
 	defer rows.Close()
 
 	if elem.Kind() == reflect.Slice {
-		return s.scanIntoSlice(rows, elem)
+		return s.db.mapError(s.scanIntoSlice(rows, elem))
 	}
 
-	return s.scanIntoOne(rows, firstDest)
+	return s.db.mapError(s.scanIntoOne(rows, firstDest))
 }
 
 func (s *Selector[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...context.Context) ([]*T, error) {
@@ -346,7 +347,7 @@ func (s *Selector[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...cont
 
 	rows, err := s.db.QueryContext(ctx, query, s.args...)
 	if err != nil {
-		return nil, err
+		return nil, s.db.mapError(err)
 	}
 	defer rows.Close()
 
@@ -355,13 +356,13 @@ func (s *Selector[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...cont
 	for rows.Next() {
 		item, err := scanner(rows)
 		if err != nil {
-			return nil, err
+			return nil, s.db.mapError(err)
 		}
 		results = append(results, item)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, s.db.mapError(err)
 	}
 
 	return results, nil

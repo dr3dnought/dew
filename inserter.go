@@ -231,7 +231,7 @@ func (i *Inserter[T]) Exec(ctxs ...context.Context) error {
 	}
 
 	_, err = i.db.ExecContext(ctx, query, args...)
-	return err
+	return i.db.mapError(err)
 }
 
 func (i *Inserter[T]) execBatch(ctx context.Context) error {
@@ -248,7 +248,7 @@ func (i *Inserter[T]) execBatch(ctx context.Context) error {
 				return err
 			}
 			if _, err := i.db.ExecContext(ctx, query, args...); err != nil {
-				return err
+				return i.db.mapError(err)
 			}
 		}
 		return nil
@@ -268,7 +268,7 @@ func (i *Inserter[T]) execBatch(ctx context.Context) error {
 				return err
 			}
 			if _, err := i.db.ExecContext(ctx, query, args...); err != nil {
-				return err
+				return i.db.mapError(err)
 			}
 		}
 		return nil
@@ -353,7 +353,7 @@ func (i *Inserter[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...cont
 
 	rows, err := i.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, i.db.mapError(err)
 	}
 	defer rows.Close()
 
@@ -362,13 +362,13 @@ func (i *Inserter[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...cont
 	for rows.Next() {
 		item, err := scanner(rows)
 		if err != nil {
-			return nil, err
+			return nil, i.db.mapError(err)
 		}
 		results = append(results, item)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, i.db.mapError(err)
 	}
 
 	return results, nil
@@ -496,7 +496,7 @@ func (i *ConflictInserter[T]) Exec(ctxs ...context.Context) error {
 	}
 
 	_, err = i.db.ExecContext(ctx, query, args...)
-	return err
+	return i.db.mapError(err)
 }
 
 func (i *ConflictInserter[T]) execBatch(ctx context.Context) error {
@@ -518,7 +518,7 @@ func (i *ConflictInserter[T]) execBatch(ctx context.Context) error {
 				return err
 			}
 			if _, err := i.db.ExecContext(ctx, query, args...); err != nil {
-				return err
+				return i.db.mapError(err)
 			}
 		}
 		return nil
@@ -543,7 +543,7 @@ func (i *ConflictInserter[T]) execBatch(ctx context.Context) error {
 				return err
 			}
 			if _, err := i.db.ExecContext(ctx, query, args...); err != nil {
-				return err
+				return i.db.mapError(err)
 			}
 		}
 		return nil
@@ -573,7 +573,7 @@ func (i *ConflictInserter[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs
 
 	rows, err := i.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, i.db.mapError(err)
 	}
 	defer rows.Close()
 
@@ -582,13 +582,13 @@ func (i *ConflictInserter[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs
 	for rows.Next() {
 		item, err := scanner(rows)
 		if err != nil {
-			return nil, err
+			return nil, i.db.mapError(err)
 		}
 		results = append(results, item)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, i.db.mapError(err)
 	}
 
 	return results, nil

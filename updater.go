@@ -55,7 +55,7 @@ func (u *Updater[T]) Exec(ctxs ...context.Context) error {
 	}
 
 	_, err = u.db.ExecContext(ctx, query, args...)
-	return err
+	return u.db.mapError(err)
 }
 
 func (u *Updater[T]) Scan(ctx context.Context, dest ...any) error {
@@ -72,7 +72,7 @@ func (u *Updater[T]) Scan(ctx context.Context, dest ...any) error {
 		ctx = context.Background()
 	}
 
-	return u.db.QueryRowContext(ctx, query, args...).Scan(dest...)
+	return u.db.mapError(u.db.QueryRowContext(ctx, query, args...).Scan(dest...))
 }
 
 func (u *Updater[T]) RowsAffected(ctxs ...context.Context) (int64, error) {
@@ -85,7 +85,7 @@ func (u *Updater[T]) RowsAffected(ctxs ...context.Context) (int64, error) {
 
 	res, err := u.db.ExecContext(ctx, query, args...)
 	if err != nil {
-		return 0, err
+		return 0, u.db.mapError(err)
 	}
 
 	return res.RowsAffected()
@@ -112,7 +112,7 @@ func (u *Updater[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...conte
 
 	rows, err := u.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, u.db.mapError(err)
 	}
 	defer rows.Close()
 
@@ -121,13 +121,13 @@ func (u *Updater[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...conte
 	for rows.Next() {
 		item, err := scanner(rows)
 		if err != nil {
-			return nil, err
+			return nil, u.db.mapError(err)
 		}
 		results = append(results, item)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, u.db.mapError(err)
 	}
 
 	return results, nil
