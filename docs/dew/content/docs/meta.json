@@ -13,6 +13,7 @@
     "cte",
     "set-operations",
     "subquery-from",
+    "error-mapping",
     "transactions",
     "jsonb",
     "expressions",

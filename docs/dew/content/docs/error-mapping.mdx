@@ -1,0 +1,130 @@
+---
+title: Error Mapping
+description: Map database driver errors to application-level sentinel errors.
+---
+
+Database drivers return driver-specific errors (e.g. `pq.Error`, `mysql.MySQLError`). Dew lets you provide a custom `ErrorMapper` function that translates these into consistent sentinel errors your application can rely on.
+
+## Sentinel errors
+
+Dew provides common sentinel errors out of the box:
+
+```go
+dew.ErrNotFound        // record not found
+dew.ErrUniqueViolation // unique constraint violation
+dew.ErrForeignKey      // foreign key violation
+dew.ErrCheckViolation  // check constraint violation
+dew.ErrNotNull         // not null violation
+```
+
+## Setting up an error mapper
+
+Pass a `WithErrorMapper` option when creating a `*dew.DB`:
+
+```go
+import (
+    "errors"
+    "github.com/dr3dnought/dew"
+    "github.com/lib/pq"
+)
+
+db, err := dew.Open("postgres", dsn, dew.PostgreSQLDialect{},
+    dew.WithErrorMapper(pgErrorMapper),
+)
+```
+
+Or wrap an existing `*sql.DB`:
+
+```go
+db := dew.NewDB(sqlDB, dew.PostgreSQLDialect{},
+    dew.WithErrorMapper(pgErrorMapper),
+)
+```
+
+## Writing a mapper
+
+An `ErrorMapper` is a function with signature `func(error) error`. Return the original error unchanged if no mapping applies:
+
+```go
+func pgErrorMapper(err error) error {
+    var pqErr *pq.Error
+    if !errors.As(err, &pqErr) {
+        return err
+    }
+
+    switch pqErr.Code {
+    case "23505":
+        return dew.ErrUniqueViolation
+    case "23503":
+        return dew.ErrForeignKey
+    case "23502":
+        return dew.ErrNotNull
+    case "23514":
+        return dew.ErrCheckViolation
+    default:
+        return err
+    }
+}
+```
+
+<Callout type="info">
+Dew doesn't depend on any driver package. You write the mapper in your application code, keeping dew dependency-free.
+</Callout>
+
+## Usage in application code
+
+Once configured, all builder execution methods (`Exec`, `All`, `One`, `Scan`, `RowsAffected`, `ScanWith`) automatically pipe errors through your mapper:
+
+```go
+err := Users.Insert(db).
+    Columns(Users.Email).
+    Values("alice@test.com").
+    Exec(ctx)
+
+if errors.Is(err, dew.ErrUniqueViolation) {
+    // handle duplicate email
+}
+```
+
+This works across all builders — `Selector`, `Inserter`, `Updater`, `Deleter`, and `SetQuery`.
+
+## Transactions inherit the mapper
+
+When you start a transaction, the error mapper is inherited automatically:
+
+```go
+tx, err := db.BeginTx(ctx, nil)
+// tx uses the same error mapper as db
+
+err = Users.Delete(tx).Where(Users.ID.Eq(1)).Exec(ctx)
+if errors.Is(err, dew.ErrForeignKey) {
+    tx.Rollback()
+    // handle FK violation
+}
+```
+
+## MySQL example
+
+```go
+import "github.com/go-sql-driver/mysql"
+
+func mysqlErrorMapper(err error) error {
+    var mysqlErr *mysql.MySQLError
+    if !errors.As(err, &mysqlErr) {
+        return err
+    }
+
+    switch mysqlErr.Number {
+    case 1062:
+        return dew.ErrUniqueViolation
+    case 1452:
+        return dew.ErrForeignKey
+    case 1048:
+        return dew.ErrNotNull
+    case 3819:
+        return dew.ErrCheckViolation
+    default:
+        return err
+    }
+}
+```
