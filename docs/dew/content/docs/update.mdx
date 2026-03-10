@@ -92,6 +92,10 @@ updated, err := Users.Update(db).
 // updated is []*User with all affected rows
 ```
 
+<Callout type="info">
+If your struct implements `RowScanner`, prefer that over `ScanWith`. See [RowScanner](/docs/select#rowscanner-interface).
+</Callout>
+
 ## RowsAffected
 
 ```go

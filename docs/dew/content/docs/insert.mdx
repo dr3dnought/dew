@@ -75,6 +75,10 @@ inserted, err := Users.Insert(db).
     })
 ```
 
+<Callout type="info">
+If your struct implements `RowScanner`, prefer that over `ScanWith`. See [RowScanner](/docs/select#rowscanner-interface).
+</Callout>
+
 ## On conflict (upsert)
 
 `OnConflict()` starts a conflict handler. Specify the conflict target columns, then choose an action.

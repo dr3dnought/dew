@@ -1,9 +1,9 @@
 ---
-title: Dialects
-description: Supported SQL dialects and placeholder styles.
+title: Dialects & Drivers
+description: Supported SQL dialects, placeholder styles, and database driver setup.
 ---
 
-Dew supports multiple SQL dialects. A dialect controls how query placeholders are rendered.
+Dew talks to `database/sql` — it never touches the driver directly. You pick any driver you want, and dew handles the rest. A dialect controls how query placeholders are rendered.
 
 ## Available dialects
 
@@ -56,4 +56,191 @@ Then use it like any built-in dialect:
 
 ```go
 db, err := dew.Open("oracle", dsn, OracleDialect{})
+```
+
+## Database drivers
+
+Dew works with any driver that registers itself with `database/sql`. The driver handles the actual connection; dew only builds and executes queries.
+
+### PostgreSQL
+
+<Tabs items={["lib/pq", "pgx"]}>
+<Tab value="lib/pq">
+```go
+import _ "github.com/lib/pq"
+
+db, err := dew.Open("postgres",
+    "postgres://user:pass@localhost/mydb?sslmode=disable",
+    dew.PostgreSQLDialect{},
+)
+```
+</Tab>
+<Tab value="pgx">
+```go
+import _ "github.com/jackc/pgx/v5/stdlib"
+
+db, err := dew.Open("pgx",
+    "postgres://user:pass@localhost/mydb?sslmode=disable",
+    dew.PostgreSQLDialect{},
+)
+```
+
+Or wrap an existing pgx connection pool:
+
+```go
+import (
+    "github.com/jackc/pgx/v5/pgxpool"
+    "github.com/jackc/pgx/v5/stdlib"
+)
+
+pool, err := pgxpool.New(ctx, dsn)
+sqlDB := stdlib.OpenDBFromPool(pool)
+
+db := dew.NewDB(sqlDB, dew.PostgreSQLDialect{})
+```
+</Tab>
+</Tabs>
+
+### MySQL
+
+```go
+import _ "github.com/go-sql-driver/mysql"
+
+db, err := dew.Open("mysql",
+    "user:pass@tcp(localhost:3306)/mydb?parseTime=true",
+    dew.MySQLDialect{},
+)
+```
+
+### SQLite
+
+<Tabs items={["modernc", "mattn"]}>
+<Tab value="modernc">
+```go
+import _ "modernc.org/sqlite"
+
+db, err := dew.Open("sqlite", "file.db", dew.SQLiteDialect{})
+```
+</Tab>
+<Tab value="mattn">
+```go
+import _ "github.com/mattn/go-sqlite3"
+
+db, err := dew.Open("sqlite3", "file.db", dew.SQLiteDialect{})
+```
+</Tab>
+</Tabs>
+
+### MSSQL
+
+```go
+import _ "github.com/microsoft/go-mssqldb"
+
+db, err := dew.Open("sqlserver",
+    "sqlserver://user:pass@localhost:1433?database=mydb",
+    dew.MSSQLDialect{},
+)
+```
+
+## Switching drivers
+
+Since dew only depends on `database/sql`, switching drivers is a one-line change — swap the import and the driver name. The dialect stays the same:
+
+```go
+// Before: lib/pq
+import _ "github.com/lib/pq"
+db, err := dew.Open("postgres", dsn, dew.PostgreSQLDialect{})
+
+// After: pgx
+import _ "github.com/jackc/pgx/v5/stdlib"
+db, err := dew.Open("pgx", dsn, dew.PostgreSQLDialect{})
+```
+
+All your queries, schemas, and error mappers stay unchanged.
+
+## Error mapping per driver
+
+Each driver returns different error types. Your `ErrorMapper` needs to match the driver you use:
+
+<Tabs items={["lib/pq", "pgx", "mysql"]}>
+<Tab value="lib/pq">
+```go
+import "github.com/lib/pq"
+
+func pqMapper(err error) error {
+    var pqErr *pq.Error
+    if !errors.As(err, &pqErr) {
+        return err
+    }
+    switch pqErr.Code {
+    case "23505":
+        return dew.ErrUniqueViolation
+    case "23503":
+        return dew.ErrForeignKey
+    case "23502":
+        return dew.ErrNotNull
+    case "23514":
+        return dew.ErrCheckViolation
+    default:
+        return err
+    }
+}
+```
+</Tab>
+<Tab value="pgx">
+```go
+import "github.com/jackc/pgx/v5/pgconn"
+
+func pgxMapper(err error) error {
+    var pgErr *pgconn.PgError
+    if !errors.As(err, &pgErr) {
+        return err
+    }
+    switch pgErr.Code {
+    case "23505":
+        return dew.ErrUniqueViolation
+    case "23503":
+        return dew.ErrForeignKey
+    case "23502":
+        return dew.ErrNotNull
+    case "23514":
+        return dew.ErrCheckViolation
+    default:
+        return err
+    }
+}
+```
+</Tab>
+<Tab value="mysql">
+```go
+import "github.com/go-sql-driver/mysql"
+
+func mysqlMapper(err error) error {
+    var mysqlErr *mysql.MySQLError
+    if !errors.As(err, &mysqlErr) {
+        return err
+    }
+    switch mysqlErr.Number {
+    case 1062:
+        return dew.ErrUniqueViolation
+    case 1452:
+        return dew.ErrForeignKey
+    case 1048:
+        return dew.ErrNotNull
+    case 3819:
+        return dew.ErrCheckViolation
+    default:
+        return err
+    }
+}
+```
+</Tab>
+</Tabs>
+
+Then pass it when creating the DB:
+
+```go
+db, err := dew.Open("pgx", dsn, dew.PostgreSQLDialect{},
+    dew.WithErrorMapper(pgxMapper),
+)
 ```

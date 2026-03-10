@@ -79,7 +79,7 @@ users, err := dew.FromSub[User](db, combined, "staff").
 ## ToSql
 
 ```go
-sql, args := dew.Union[User](db, admins, mods).ToSql()
+sql, args, err := dew.Union[User](db, admins, mods).ToSql()
 ```
 
 ## Constructors

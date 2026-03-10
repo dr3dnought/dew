@@ -101,14 +101,14 @@ func (sq *SetQuery[T]) Args() []any {
 	return args
 }
 
-func (sq *SetQuery[T]) ToSql() (string, []any) {
+func (sq *SetQuery[T]) ToSql() (string, []any, error) {
 	raw, args := sq.buildRawSetQuery()
-	return replacePlaceholders(raw, sq.db.getDialect(), 0), args
+	return replacePlaceholders(raw, sq.db.getDialect(), 0), args, nil
 }
 
 func (sq *SetQuery[T]) All(ctxs ...context.Context) ([]*T, error) {
 	ctx := getCtx(ctxs)
-	query, args := sq.ToSql()
+	query, args, _ := sq.ToSql()
 
 	rows, err := sq.db.QueryContext(ctx, query, args...)
 	if err != nil {

@@ -117,8 +117,8 @@ func TestSelectorToSql_WithTx(t *testing.T) {
 
 	nameCol := table.StringColumn("name")
 
-	dbQuery, _ := table.From(db).Where(nameCol.Eq("Alice")).ToSql()
-	txQuery, _ := table.From(tx).Where(nameCol.Eq("Alice")).ToSql()
+	dbQuery, _, _ := table.From(db).Where(nameCol.Eq("Alice")).ToSql()
+	txQuery, _, _ := table.From(tx).Where(nameCol.Eq("Alice")).ToSql()
 
 	if dbQuery != txQuery {
 		t.Errorf("queries differ:\n  DB: %s\n  Tx: %s", dbQuery, txQuery)

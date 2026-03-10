@@ -59,6 +59,24 @@ err := Users.Delete(db).
     Scan(ctx, &id, &name)
 ```
 
+### ScanWith + Returning
+
+```go
+deleted, err := Users.Delete(db).
+    Where(Users.Age.Lt(18)).
+    Returning(Users.ID, Users.Name).
+    ScanWith(func(rows *sql.Rows) (*User, error) {
+        var u User
+        err := rows.Scan(&u.ID, &u.Name)
+        return &u, err
+    })
+// deleted is []*User with all removed rows
+```
+
+<Callout type="info">
+If your struct implements `RowScanner`, prefer using `All()` on a selector or `RowScanner` over `ScanWith`. See [RowScanner](/docs/select#rowscanner-interface).
+</Callout>
+
 ## RowsAffected
 
 ```go

@@ -2,6 +2,7 @@ package dew
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 )
@@ -58,6 +59,41 @@ func (d *Deleter[T]) Scan(ctx context.Context, dest ...any) error {
 	}
 
 	return d.db.mapError(d.db.QueryRowContext(ctx, query, args...).Scan(dest...))
+}
+
+func (d *Deleter[T]) ScanWith(scanner func(*sql.Rows) (*T, error), ctxs ...context.Context) ([]*T, error) {
+	if len(d.returningCols) == 0 {
+		return nil, fmt.Errorf("dew: ScanWith requires Returning() to be called")
+	}
+
+	ctx := getCtx(ctxs)
+
+	query, args, err := d.buildDeleteQuery()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := d.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, d.db.mapError(err)
+	}
+	defer rows.Close()
+
+	var results []*T
+
+	for rows.Next() {
+		item, err := scanner(rows)
+		if err != nil {
+			return nil, d.db.mapError(err)
+		}
+		results = append(results, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, d.db.mapError(err)
+	}
+
+	return results, nil
 }
 
 func (d *Deleter[T]) RowsAffected(ctxs ...context.Context) (int64, error) {

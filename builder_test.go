@@ -32,7 +32,7 @@ var (
 // ─── Selector ────────────────────────────────────────────────
 
 func TestSelector_BasicSelect(t *testing.T) {
-	sql, _ := testTable.From(pgDB).ToSql()
+	sql, _, _ := testTable.From(pgDB).ToSql()
 	want := "SELECT * FROM users"
 	if sql != want {
 		t.Errorf("got %q, want %q", sql, want)
@@ -40,7 +40,7 @@ func TestSelector_BasicSelect(t *testing.T) {
 }
 
 func TestSelector_SelectColumns(t *testing.T) {
-	sql, _ := testTable.From(pgDB).Select(tID, tName).ToSql()
+	sql, _, _ := testTable.From(pgDB).Select(tID, tName).ToSql()
 	want := "SELECT users.id, users.name FROM users"
 	if sql != want {
 		t.Errorf("got %q, want %q", sql, want)
@@ -76,7 +76,7 @@ func TestSelector_Where(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sql, args := testTable.From(tt.db).Where(tID.Eq(1)).ToSql()
+			sql, args, _ := testTable.From(tt.db).Where(tID.Eq(1)).ToSql()
 			if sql != tt.wantSQL {
 				t.Errorf("sql = %q, want %q", sql, tt.wantSQL)
 			}
@@ -88,7 +88,7 @@ func TestSelector_Where(t *testing.T) {
 }
 
 func TestSelector_WhereMultiple(t *testing.T) {
-	sql, args := testTable.From(pgDB).
+	sql, args, _ := testTable.From(pgDB).
 		Where(tName.Eq("Alice"), tAge.Gt(18)).
 		ToSql()
 
@@ -104,7 +104,7 @@ func TestSelector_WhereMultiple(t *testing.T) {
 }
 
 func TestSelector_WhereAndOr(t *testing.T) {
-	sql, args := testTable.From(pgDB).
+	sql, args, _ := testTable.From(pgDB).
 		Where(Or(tName.Eq("Alice"), tName.Eq("Bob"))).
 		ToSql()
 
@@ -120,7 +120,7 @@ func TestSelector_WhereAndOr(t *testing.T) {
 }
 
 func TestSelector_Limit(t *testing.T) {
-	sql, _ := testTable.From(pgDB).Limit(10).ToSql()
+	sql, _, _ := testTable.From(pgDB).Limit(10).ToSql()
 	want := "SELECT * FROM users LIMIT 10"
 	if sql != want {
 		t.Errorf("got %q, want %q", sql, want)
@@ -128,7 +128,7 @@ func TestSelector_Limit(t *testing.T) {
 }
 
 func TestSelector_Offset(t *testing.T) {
-	sql, _ := testTable.From(pgDB).Limit(10).Offset(20).ToSql()
+	sql, _, _ := testTable.From(pgDB).Limit(10).Offset(20).ToSql()
 	want := "SELECT * FROM users LIMIT 10 OFFSET 20"
 	if sql != want {
 		t.Errorf("got %q, want %q", sql, want)
@@ -136,7 +136,7 @@ func TestSelector_Offset(t *testing.T) {
 }
 
 func TestSelector_OrderBy(t *testing.T) {
-	sql, _ := testTable.From(pgDB).OrderBy(Desc(tAge), Asc(tName)).ToSql()
+	sql, _, _ := testTable.From(pgDB).OrderBy(Desc(tAge), Asc(tName)).ToSql()
 	want := "SELECT * FROM users ORDER BY users.age DESC, users.name ASC"
 	if sql != want {
 		t.Errorf("got %q, want %q", sql, want)
@@ -147,7 +147,7 @@ func TestSelector_Distinct(t *testing.T) {
 	// Distinct with explicit empty slice triggers DISTINCT *
 	sel := testTable.From(pgDB)
 	sel.distinctColumns = []Column{} // explicitly empty, not nil
-	sql, _ := sel.ToSql()
+	sql, _, _ := sel.ToSql()
 	want := "SELECT DISTINCT * FROM users"
 	if sql != want {
 		t.Errorf("got %q, want %q", sql, want)
@@ -155,7 +155,7 @@ func TestSelector_Distinct(t *testing.T) {
 }
 
 func TestSelector_DistinctColumns(t *testing.T) {
-	sql, _ := testTable.From(pgDB).Distinct(tName, tEmail).ToSql()
+	sql, _, _ := testTable.From(pgDB).Distinct(tName, tEmail).ToSql()
 	want := "SELECT DISTINCT users.name, users.email FROM users"
 	if sql != want {
 		t.Errorf("got %q, want %q", sql, want)
@@ -163,7 +163,7 @@ func TestSelector_DistinctColumns(t *testing.T) {
 }
 
 func TestSelector_GroupBy(t *testing.T) {
-	sql, _ := testTable.From(pgDB).
+	sql, _, _ := testTable.From(pgDB).
 		Select(tName, Count()).
 		GroupBy(tName).
 		ToSql()
@@ -174,7 +174,7 @@ func TestSelector_GroupBy(t *testing.T) {
 }
 
 func TestSelector_Having(t *testing.T) {
-	sql, args := testTable.From(pgDB).
+	sql, args, _ := testTable.From(pgDB).
 		Select(tName, Count()).
 		GroupBy(tName).
 		Having(Raw("COUNT(*) > ?", 5)).
@@ -194,7 +194,7 @@ func TestSelector_InnerJoin(t *testing.T) {
 	ordersTable := NewTable[testUser]("orders", PostgreSQLDialect{})
 	orderUserID := ordersTable.IntColumn("user_id")
 
-	sql, _ := testTable.From(pgDB).
+	sql, _, _ := testTable.From(pgDB).
 		InnerJoin(ordersTable, tID, orderUserID).
 		ToSql()
 
@@ -208,7 +208,7 @@ func TestSelector_LeftJoin(t *testing.T) {
 	ordersTable := NewTable[testUser]("orders", PostgreSQLDialect{})
 	orderUserID := ordersTable.IntColumn("user_id")
 
-	sql, _ := testTable.From(pgDB).
+	sql, _, _ := testTable.From(pgDB).
 		LeftJoin(ordersTable, tID, orderUserID).
 		ToSql()
 
@@ -219,7 +219,7 @@ func TestSelector_LeftJoin(t *testing.T) {
 }
 
 func TestSelector_Complex(t *testing.T) {
-	sql, args := testTable.From(pgDB).
+	sql, args, _ := testTable.From(pgDB).
 		Select(tName, tAge).
 		Where(tAge.Gte(18), tName.NotEq("Admin")).
 		OrderBy(Asc(tName)).
@@ -239,7 +239,7 @@ func TestSelector_Complex(t *testing.T) {
 }
 
 func TestSelector_SubqueryExpr(t *testing.T) {
-	sql, args := testTable.From(pgDB).
+	sql, args, _ := testTable.From(pgDB).
 		Where(tID.InSub(
 			testTable.From(pgDB).Select(tID).Where(tAge.Gt(21)),
 		)).
@@ -263,8 +263,8 @@ func TestSelector_Clone(t *testing.T) {
 	// mutate clone
 	clone.Where(tName.Eq("Alice"))
 
-	baseSql, baseArgs := base.ToSql()
-	cloneSql, cloneArgs := clone.ToSql()
+	baseSql, baseArgs, _ := base.ToSql()
+	cloneSql, cloneArgs, _ := clone.ToSql()
 
 	if baseSql == cloneSql {
 		t.Errorf("clone mutation affected base: both = %q", baseSql)
@@ -278,7 +278,7 @@ func TestSelector_RightJoin(t *testing.T) {
 	ordersTable := NewTable[testUser]("orders", PostgreSQLDialect{})
 	orderUserID := ordersTable.IntColumn("user_id")
 
-	sql, _ := testTable.From(pgDB).
+	sql, _, _ := testTable.From(pgDB).
 		RightJoin(ordersTable, tID, orderUserID).
 		ToSql()
 
@@ -295,7 +295,7 @@ func TestSelector_MultipleJoins(t *testing.T) {
 	paymentOrderID := paymentsTable.IntColumn("order_id")
 	orderID := ordersTable.IntColumn("id")
 
-	sql, _ := testTable.From(pgDB).
+	sql, _, _ := testTable.From(pgDB).
 		InnerJoin(ordersTable, tID, orderUserID).
 		LeftJoin(paymentsTable, orderID, paymentOrderID).
 		ToSql()
@@ -307,7 +307,7 @@ func TestSelector_MultipleJoins(t *testing.T) {
 }
 
 func TestSelector_DistinctWithWhere(t *testing.T) {
-	sql, args := testTable.From(pgDB).
+	sql, args, _ := testTable.From(pgDB).
 		Distinct(tName).
 		Where(tAge.Gt(18)).
 		ToSql()
@@ -324,7 +324,7 @@ func TestSelector_DistinctWithWhere(t *testing.T) {
 }
 
 func TestSelector_ScanWith_ToSql(t *testing.T) {
-	sql, args := testTable.From(pgDB).
+	sql, args, _ := testTable.From(pgDB).
 		Select(tName, tEmail).
 		Where(tAge.Gt(21)).
 		ToSql()
@@ -341,7 +341,7 @@ func TestSelector_ScanWith_ToSql(t *testing.T) {
 }
 
 func TestSelector_MSSQL(t *testing.T) {
-	sql, args := testTable.From(mssqlDB).
+	sql, args, _ := testTable.From(mssqlDB).
 		Select(tName).
 		Where(tAge.Gt(18), tName.NotEq("Admin")).
 		OrderBy(Asc(tName)).
@@ -367,8 +367,8 @@ func TestSelector_CloneWithCTE(t *testing.T) {
 	clone := base.Clone()
 	clone.Where(tName.Eq("Alice"))
 
-	baseSql, baseArgs := base.ToSql()
-	cloneSql, cloneArgs := clone.ToSql()
+	baseSql, baseArgs, _ := base.ToSql()
+	cloneSql, cloneArgs, _ := clone.ToSql()
 
 	wantBase := "WITH adults AS (SELECT * FROM users WHERE users.age > $1) SELECT * FROM adults"
 	if baseSql != wantBase {
@@ -394,8 +394,8 @@ func TestSelector_CloneWithFromSub(t *testing.T) {
 	clone := base.Clone()
 	clone.Where(Raw("sub.age < ?", 30))
 
-	baseSql, baseArgs := base.ToSql()
-	cloneSql, cloneArgs := clone.ToSql()
+	baseSql, baseArgs, _ := base.ToSql()
+	cloneSql, cloneArgs, _ := clone.ToSql()
 
 	wantBase := "SELECT * FROM (SELECT users.name, users.age FROM users WHERE users.age > $1) AS sub"
 	if baseSql != wantBase {
@@ -419,7 +419,7 @@ func TestSelector_SetQueryAsFromSub(t *testing.T) {
 	right := testTable.From(pgDB).Select(tName).Where(tName.Eq("Admin"))
 	combined := Union[testUser](pgDB, left, right)
 
-	sql, args := FromSub[testUser](pgDB, combined, "staff").
+	sql, args, _ := FromSub[testUser](pgDB, combined, "staff").
 		Where(Raw("1=1")).
 		ToSql()
 
@@ -436,7 +436,7 @@ func TestSelector_SetQueryAsFromSub(t *testing.T) {
 
 func TestSelector_WhereEmpty(t *testing.T) {
 	// Empty expression should be skipped
-	sql, _ := testTable.From(pgDB).
+	sql, _, _ := testTable.From(pgDB).
 		Where(Raw("")).
 		ToSql()
 
@@ -447,7 +447,7 @@ func TestSelector_WhereEmpty(t *testing.T) {
 }
 
 func TestSelector_LimitOffset(t *testing.T) {
-	sql, _ := testTable.From(pgDB).Offset(5).ToSql()
+	sql, _, _ := testTable.From(pgDB).Offset(5).ToSql()
 	// offset without limit
 	want := "SELECT * FROM users OFFSET 5"
 	if sql != want {
@@ -456,7 +456,7 @@ func TestSelector_LimitOffset(t *testing.T) {
 }
 
 func TestSelector_SelectWithAlias(t *testing.T) {
-	sql, _ := testTable.From(pgDB).
+	sql, _, _ := testTable.From(pgDB).
 		Select(tName, As(Count(), "total")).
 		GroupBy(tName).
 		ToSql()
@@ -468,7 +468,7 @@ func TestSelector_SelectWithAlias(t *testing.T) {
 }
 
 func TestSelector_NestedAndOr(t *testing.T) {
-	sql, args := testTable.From(pgDB).
+	sql, args, _ := testTable.From(pgDB).
 		Where(And(
 			tAge.Gte(18),
 			Or(
@@ -490,7 +490,7 @@ func TestSelector_NestedAndOr(t *testing.T) {
 }
 
 func TestSelector_HavingMultiple(t *testing.T) {
-	sql, args := testTable.From(pgDB).
+	sql, args, _ := testTable.From(pgDB).
 		Select(tName, Count()).
 		GroupBy(tName).
 		Having(Raw("COUNT(*) > ?", 5), Raw("COUNT(*) < ?", 100)).
@@ -508,7 +508,7 @@ func TestSelector_HavingMultiple(t *testing.T) {
 }
 
 func TestSelector_GroupByMultiple(t *testing.T) {
-	sql, _ := testTable.From(pgDB).
+	sql, _, _ := testTable.From(pgDB).
 		Select(tName, tAge, Count()).
 		GroupBy(tName, tAge).
 		ToSql()
@@ -524,7 +524,7 @@ func TestSelector_JoinWithWhere(t *testing.T) {
 	orderUserID := ordersTable.IntColumn("user_id")
 	orderTotal := ordersTable.FloatColumn("total")
 
-	sql, args := testTable.From(pgDB).
+	sql, args, _ := testTable.From(pgDB).
 		Select(tName, orderTotal).
 		InnerJoin(ordersTable, tID, orderUserID).
 		Where(orderTotal.Gt(100.0)).
@@ -1172,7 +1172,7 @@ func TestDeleter_Clone(t *testing.T) {
 
 func TestSelector_CTE_Basic(t *testing.T) {
 	sub := testTable.From(pgDB).Select(tID, tName).Where(tAge.Gt(18))
-	sql, args := From[testUser](pgDB, TableRef("adults")).
+	sql, args, _ := From[testUser](pgDB, TableRef("adults")).
 		With(CTE("adults", sub)).
 		Where(Raw("adults.name = ?", "Alice")).
 		ToSql()
@@ -1193,7 +1193,7 @@ func TestSelector_CTE_Recursive(t *testing.T) {
 	recursive := Raw("SELECT n + 1 FROM nums WHERE n < ?", 10)
 	cteBody := Union[struct{ N int }](pgDB, base, recursive)
 
-	sql, args := From[struct{ N int }](pgDB, TableRef("nums")).
+	sql, args, _ := From[struct{ N int }](pgDB, TableRef("nums")).
 		With(RecursiveCTE("nums", cteBody)).
 		ToSql()
 
@@ -1212,7 +1212,7 @@ func TestSelector_CTE_MultipleArgs(t *testing.T) {
 	cte1 := testTable.From(pgDB).Where(tAge.Gt(18))
 	cte2 := testTable.From(pgDB).Where(tName.Eq("Bob"))
 
-	sql, args := From[testUser](pgDB, TableRef("a")).
+	sql, args, _ := From[testUser](pgDB, TableRef("a")).
 		With(CTE("a", cte1), CTE("b", cte2)).
 		Where(Raw("1=1")).
 		ToSql()
@@ -1232,7 +1232,7 @@ func TestSelector_CTE_MultipleArgs(t *testing.T) {
 
 func TestSelector_FromSub(t *testing.T) {
 	sub := testTable.From(pgDB).Select(tName, tAge).Where(tAge.Gt(21))
-	sql, args := FromSub[testUser](pgDB, sub, "sub").
+	sql, args, _ := FromSub[testUser](pgDB, sub, "sub").
 		Where(Raw("sub.age < ?", 30)).
 		ToSql()
 
@@ -1253,7 +1253,7 @@ func TestSetQuery_Union(t *testing.T) {
 	left := testTable.From(pgDB).Select(tName).Where(tAge.Gt(18))
 	right := testTable.From(pgDB).Select(tName).Where(tName.Eq("Admin"))
 
-	sql, args := Union[testUser](pgDB, left, right).ToSql()
+	sql, args, _ := Union[testUser](pgDB, left, right).ToSql()
 
 	wantSQL := "(SELECT users.name FROM users WHERE users.age > $1) UNION (SELECT users.name FROM users WHERE users.name = $2)"
 	wantArgs := []any{18, "Admin"}
@@ -1270,7 +1270,7 @@ func TestSetQuery_UnionAll(t *testing.T) {
 	left := testTable.From(pgDB).Select(tName).Where(tAge.Gt(18))
 	right := testTable.From(pgDB).Select(tName).Where(tAge.Lt(5))
 
-	sql, args := UnionAll[testUser](pgDB, left, right).ToSql()
+	sql, args, _ := UnionAll[testUser](pgDB, left, right).ToSql()
 
 	wantSQL := "(SELECT users.name FROM users WHERE users.age > $1) UNION ALL (SELECT users.name FROM users WHERE users.age < $2)"
 	wantArgs := []any{18, 5}
@@ -1287,7 +1287,7 @@ func TestSetQuery_Intersect(t *testing.T) {
 	left := testTable.From(pgDB).Select(tName).Where(tAge.Gt(18))
 	right := testTable.From(pgDB).Select(tName).Where(tName.Eq("Alice"))
 
-	sql, args := Intersect[testUser](pgDB, left, right).ToSql()
+	sql, args, _ := Intersect[testUser](pgDB, left, right).ToSql()
 
 	wantSQL := "(SELECT users.name FROM users WHERE users.age > $1) INTERSECT (SELECT users.name FROM users WHERE users.name = $2)"
 	wantArgs := []any{18, "Alice"}
@@ -1304,7 +1304,7 @@ func TestSetQuery_Except(t *testing.T) {
 	left := testTable.From(pgDB).Select(tName).Where(tAge.Gt(18))
 	right := testTable.From(pgDB).Select(tName).Where(tName.Eq("Admin"))
 
-	sql, args := Except[testUser](pgDB, left, right).ToSql()
+	sql, args, _ := Except[testUser](pgDB, left, right).ToSql()
 
 	wantSQL := "(SELECT users.name FROM users WHERE users.age > $1) EXCEPT (SELECT users.name FROM users WHERE users.name = $2)"
 	wantArgs := []any{18, "Admin"}
@@ -1322,7 +1322,7 @@ func TestSetQuery_UnionChain(t *testing.T) {
 	q2 := testTable.From(pgDB).Select(tName).Where(tAge.Lt(5))
 	q3 := testTable.From(pgDB).Select(tName).Where(tName.Eq("Admin"))
 
-	sql, args := Union[testUser](pgDB, q1, q2).UnionAll(q3).ToSql()
+	sql, args, _ := Union[testUser](pgDB, q1, q2).UnionAll(q3).ToSql()
 
 	wantSQL := "(SELECT users.name FROM users WHERE users.age > $1) UNION (SELECT users.name FROM users WHERE users.age < $2) UNION ALL (SELECT users.name FROM users WHERE users.name = $3)"
 	wantArgs := []any{18, 5, "Admin"}
@@ -1339,7 +1339,7 @@ func TestSetQuery_OrderByLimitOffset(t *testing.T) {
 	left := testTable.From(pgDB).Select(tName).Where(tAge.Gt(18))
 	right := testTable.From(pgDB).Select(tName).Where(tAge.Lt(5))
 
-	sql, args := UnionAll[testUser](pgDB, left, right).
+	sql, args, _ := UnionAll[testUser](pgDB, left, right).
 		OrderBy(Asc(Raw("name"))).
 		Limit(10).
 		Offset(5).
@@ -1361,7 +1361,7 @@ func TestSetQuery_AsCTEBody(t *testing.T) {
 	right := testTable.From(pgDB).Select(tName, tAge).Where(tName.Eq("Admin"))
 	combined := Union[testUser](pgDB, left, right)
 
-	sql, args := From[testUser](pgDB, TableRef("combined")).
+	sql, args, _ := From[testUser](pgDB, TableRef("combined")).
 		With(CTE("combined", combined)).
 		Where(Raw("combined.age > ?", 25)).
 		ToSql()
@@ -1379,7 +1379,7 @@ func TestSetQuery_AsCTEBody(t *testing.T) {
 
 func TestSelector_CTE_NoArgs(t *testing.T) {
 	sub := testTable.From(pgDB).Select(tID, tName)
-	sql, args := From[testUser](pgDB, TableRef("all_users")).
+	sql, args, _ := From[testUser](pgDB, TableRef("all_users")).
 		With(CTE("all_users", sub)).
 		ToSql()
 
@@ -1397,7 +1397,7 @@ func TestSetQuery_MySQL(t *testing.T) {
 	left := testTable.From(myDB).Select(tName).Where(tAge.Gt(18))
 	right := testTable.From(myDB).Select(tName).Where(tName.Eq("Admin"))
 
-	sql, args := Union[testUser](myDB, left, right).ToSql()
+	sql, args, _ := Union[testUser](myDB, left, right).ToSql()
 
 	wantSQL := "(SELECT users.name FROM users WHERE users.age > ?) UNION (SELECT users.name FROM users WHERE users.name = ?)"
 	wantArgs := []any{18, "Admin"}

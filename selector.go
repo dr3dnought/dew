@@ -154,8 +154,8 @@ func (s *Selector[T]) RightJoin(schema Tabler, onLeft Column, onRight Column) *S
 	return s
 }
 
-func (s *Selector[T]) ToSql() (string, []any) {
-	return s.buildQuery(), s.args
+func (s *Selector[T]) ToSql() (string, []any, error) {
+	return s.buildQuery(), s.args, nil
 }
 
 func (s *Selector[T]) Clone() *Selector[T] {
