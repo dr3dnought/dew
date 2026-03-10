@@ -64,13 +64,21 @@ The schema embeds `dew.Table[User]`, which gives you `Users.From(db)`, `Users.In
 | Method | Type | Go type |
 |--------|------|---------|
 | `t.IntColumn("name")` | `IntColumn` | `int` |
+| `t.Int64Column("name")` | `Int64Column` | `int64` |
 | `t.StringColumn("name")` | `StringColumn` | `string` |
 | `t.BoolColumn("name")` | `BoolColumn` | `bool` |
 | `t.FloatColumn("name")` | `FloatColumn` | `float64` |
+| `t.Float32Column("name")` | `Float32Column` | `float32` |
 | `t.TimeColumn("name")` | `TimeColumn` | `time.Time` |
 | `t.UUIDColumn("name")` | `UUIDColumn` | `string` |
+| `t.BytesColumn("name")` | `BytesColumn` | `[]byte` |
+| `t.AnyColumn("name")` | `AnyColumn` | `any` |
 
 For JSONB columns, see [JSONB](/docs/jsonb).
+
+<Callout type="info">
+Use `Int64Column` for `bigserial` / `bigint` primary keys and large counters. Use `AnyColumn` as an escape hatch for types dew doesn't cover natively — all its methods accept `any`.
+</Callout>
 
 ## Column operators
 
@@ -86,7 +94,7 @@ All column types share these common operators:
 | `col.NotIn(vals...)` | `col NOT IN (?, ?, ...)` |
 | `col.InSub(subquery)` | `col IN (SELECT ...)` |
 
-Numeric columns (`IntColumn`, `FloatColumn`) also have:
+Numeric columns (`IntColumn`, `Int64Column`, `FloatColumn`, `Float32Column`, `AnyColumn`) also have:
 
 | Method | SQL |
 |--------|-----|

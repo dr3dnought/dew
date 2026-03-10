@@ -59,6 +59,13 @@ func (t Table[T]) IntColumn(name string) IntColumn {
 	}
 }
 
+func (t Table[T]) Int64Column(name string) Int64Column {
+	return Int64Column{
+		name:  name,
+		table: &t.name,
+	}
+}
+
 func (t Table[T]) StringColumn(name string) StringColumn {
 	return StringColumn{
 		name:  name,
@@ -82,6 +89,27 @@ func (t Table[T]) FloatColumn(name string) FloatColumn {
 
 func (t Table[T]) TimeColumn(name string) TimeColumn {
 	return TimeColumn{
+		name:  name,
+		table: &t.name,
+	}
+}
+
+func (t Table[T]) BytesColumn(name string) BytesColumn {
+	return BytesColumn{
+		name:  name,
+		table: &t.name,
+	}
+}
+
+func (t Table[T]) Float32Column(name string) Float32Column {
+	return Float32Column{
+		name:  name,
+		table: &t.name,
+	}
+}
+
+func (t Table[T]) AnyColumn(name string) AnyColumn {
+	return AnyColumn{
 		name:  name,
 		table: &t.name,
 	}

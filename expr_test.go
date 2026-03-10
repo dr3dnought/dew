@@ -461,6 +461,110 @@ func TestAliasExpr(t *testing.T) {
 	}
 }
 
+func TestInt64Column(t *testing.T) {
+	tbl := "users"
+	col := Int64Column{name: "id", table: &tbl}
+
+	if col.Sql() != "users.id" {
+		t.Errorf("Sql = %q, want %q", col.Sql(), "users.id")
+	}
+
+	tests := []struct {
+		name string
+		expr Expression
+		sql  string
+		args []any
+	}{
+		{"Eq", col.Eq(42), "users.id = ?", []any{int64(42)}},
+		{"Gt", col.Gt(100), "users.id > ?", []any{int64(100)}},
+		{"Lt", col.Lt(10), "users.id < ?", []any{int64(10)}},
+		{"In", col.In(1, 2, 3), "users.id IN (?, ?, ?)", []any{int64(1), int64(2), int64(3)}},
+		{"Between", col.Between(10, 20), "users.id BETWEEN ? AND ?", []any{int64(10), int64(20)}},
+		{"IsNull", col.IsNull(), "users.id IS NULL", nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.expr.Sql() != tt.sql {
+				t.Errorf("Sql = %q, want %q", tt.expr.Sql(), tt.sql)
+			}
+			if tt.args == nil {
+				return
+			}
+			for i, v := range tt.args {
+				if tt.expr.Args()[i] != v {
+					t.Errorf("Args[%d]=%v, want %v", i, tt.expr.Args()[i], v)
+				}
+			}
+		})
+	}
+
+	aliased := col.As("user_id")
+	if aliased.Sql() != "user_id" {
+		t.Errorf("aliased Sql = %q, want %q", aliased.Sql(), "user_id")
+	}
+}
+
+func TestBytesColumn(t *testing.T) {
+	tbl := "files"
+	col := BytesColumn{name: "data", table: &tbl}
+
+	if col.Sql() != "files.data" {
+		t.Errorf("Sql = %q, want %q", col.Sql(), "files.data")
+	}
+	if col.Eq([]byte("hello")).Sql() != "files.data = ?" {
+		t.Errorf("Eq Sql wrong")
+	}
+	if col.IsNull().Sql() != "files.data IS NULL" {
+		t.Errorf("IsNull Sql wrong")
+	}
+}
+
+func TestFloat32Column(t *testing.T) {
+	tbl := "sensors"
+	col := Float32Column{name: "value", table: &tbl}
+
+	if col.Sql() != "sensors.value" {
+		t.Errorf("Sql = %q, want %q", col.Sql(), "sensors.value")
+	}
+
+	expr := col.Gt(3.14)
+	if expr.Sql() != "sensors.value > ?" {
+		t.Errorf("Gt Sql = %q", expr.Sql())
+	}
+	if expr.Args()[0] != float32(3.14) {
+		t.Errorf("Gt arg = %v, want %v", expr.Args()[0], float32(3.14))
+	}
+
+	between := col.Between(1.0, 9.9)
+	if between.Sql() != "sensors.value BETWEEN ? AND ?" {
+		t.Errorf("Between Sql = %q", between.Sql())
+	}
+}
+
+func TestAnyColumn(t *testing.T) {
+	tbl := "events"
+	col := AnyColumn{name: "payload", table: &tbl}
+
+	if col.Sql() != "events.payload" {
+		t.Errorf("Sql = %q, want %q", col.Sql(), "events.payload")
+	}
+
+	// Works with any type
+	if col.Eq("hello").Sql() != "events.payload = ?" {
+		t.Errorf("Eq string wrong")
+	}
+	if col.Gt(42).Sql() != "events.payload > ?" {
+		t.Errorf("Gt int wrong")
+	}
+	if col.In("a", "b", "c").Sql() != "events.payload IN (?, ?, ?)" {
+		t.Errorf("In wrong")
+	}
+	if col.IsNull().Sql() != "events.payload IS NULL" {
+		t.Errorf("IsNull wrong")
+	}
+}
+
 func TestRaw(t *testing.T) {
 	tests := []struct {
 		name string

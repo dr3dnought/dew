@@ -129,6 +129,72 @@ func (c IntColumn) IsNotNull() Expression {
 	return colIsNotNull(c)
 }
 
+type Int64Column struct {
+	name  string
+	table *string
+	alias *string
+}
+
+func (c Int64Column) Sql() string {
+	if c.alias != nil {
+		return *c.alias
+	}
+	if c.table != nil && *c.table != "" {
+		return fmt.Sprintf("%s.%s", *c.table, c.name)
+	}
+	return c.name
+}
+
+func (c Int64Column) Args() []any        { return nil }
+func (c Int64Column) ColumnName() string { return c.name }
+func (c Int64Column) TableName() string {
+	if c.table != nil {
+		return *c.table
+	}
+	return ""
+}
+
+func (c Int64Column) Alias() *string {
+	if c.alias != nil && *c.alias != "" {
+		return c.alias
+	}
+	return nil
+}
+
+func (c Int64Column) As(alias string) Int64Column {
+	return Int64Column{
+		name:  c.name,
+		table: c.table,
+		alias: &alias,
+	}
+}
+
+func (c Int64Column) Eq(val int64) Expression    { return colEq(c, val) }
+func (c Int64Column) NotEq(val int64) Expression { return colNotEq(c, val) }
+func (c Int64Column) Gt(val int64) Expression    { return colGt(c, val) }
+func (c Int64Column) Gte(val int64) Expression   { return colGte(c, val) }
+func (c Int64Column) Lt(val int64) Expression    { return colLt(c, val) }
+func (c Int64Column) Lte(val int64) Expression   { return colLte(c, val) }
+
+func (c Int64Column) EqSub(subQuery Expression) Expression    { return colEqSub(c, subQuery) }
+func (c Int64Column) NotEqSub(subQuery Expression) Expression { return colNotEqSub(c, subQuery) }
+
+func (c Int64Column) In(vals ...int64) Expression {
+	return colIn(c, convertToAny(vals...))
+}
+
+func (c Int64Column) InSub(subQuery Expression) Expression { return colInSub(c, subQuery) }
+
+func (c Int64Column) NotIn(vals ...int64) Expression {
+	return colNotIn(c, convertToAny(vals...))
+}
+
+func (c Int64Column) NotInSub(subQuery Expression) Expression { return colNotInSub(c, subQuery) }
+
+func (c Int64Column) Between(min, max int64) Expression { return colBetween(c, min, max) }
+func (c Int64Column) IsNull() Expression                { return colIsNull(c) }
+func (c Int64Column) IsNotNull() Expression             { return colIsNotNull(c) }
+
 type StringColumn struct {
 	name  string
 	table *string
@@ -546,6 +612,177 @@ func (c UUIDColumn) IsNull() Expression {
 func (c UUIDColumn) IsNotNull() Expression {
 	return colIsNotNull(c)
 }
+
+type BytesColumn struct {
+	name  string
+	table *string
+	alias *string
+}
+
+func (c BytesColumn) Sql() string {
+	if c.alias != nil {
+		return *c.alias
+	}
+	if c.table != nil && *c.table != "" {
+		return fmt.Sprintf("%s.%s", *c.table, c.name)
+	}
+	return c.name
+}
+
+func (c BytesColumn) Args() []any        { return nil }
+func (c BytesColumn) ColumnName() string { return c.name }
+func (c BytesColumn) TableName() string {
+	if c.table != nil {
+		return *c.table
+	}
+	return ""
+}
+
+func (c BytesColumn) Alias() *string {
+	if c.alias != nil && *c.alias != "" {
+		return c.alias
+	}
+	return nil
+}
+
+func (c BytesColumn) As(alias string) BytesColumn {
+	return BytesColumn{
+		name:  c.name,
+		table: c.table,
+		alias: &alias,
+	}
+}
+
+func (c BytesColumn) Eq(val []byte) Expression    { return colEq(c, val) }
+func (c BytesColumn) NotEq(val []byte) Expression { return colNotEq(c, val) }
+func (c BytesColumn) IsNull() Expression           { return colIsNull(c) }
+func (c BytesColumn) IsNotNull() Expression        { return colIsNotNull(c) }
+
+type Float32Column struct {
+	name  string
+	table *string
+	alias *string
+}
+
+func (c Float32Column) Sql() string {
+	if c.alias != nil {
+		return *c.alias
+	}
+	if c.table != nil && *c.table != "" {
+		return fmt.Sprintf("%s.%s", *c.table, c.name)
+	}
+	return c.name
+}
+
+func (c Float32Column) Args() []any        { return nil }
+func (c Float32Column) ColumnName() string { return c.name }
+func (c Float32Column) TableName() string {
+	if c.table != nil {
+		return *c.table
+	}
+	return ""
+}
+
+func (c Float32Column) Alias() *string {
+	if c.alias != nil && *c.alias != "" {
+		return c.alias
+	}
+	return nil
+}
+
+func (c Float32Column) As(alias string) Float32Column {
+	return Float32Column{
+		name:  c.name,
+		table: c.table,
+		alias: &alias,
+	}
+}
+
+func (c Float32Column) Eq(val float32) Expression    { return colEq(c, val) }
+func (c Float32Column) NotEq(val float32) Expression { return colNotEq(c, val) }
+func (c Float32Column) Gt(val float32) Expression    { return colGt(c, val) }
+func (c Float32Column) Gte(val float32) Expression   { return colGte(c, val) }
+func (c Float32Column) Lt(val float32) Expression    { return colLt(c, val) }
+func (c Float32Column) Lte(val float32) Expression   { return colLte(c, val) }
+
+func (c Float32Column) EqSub(subQuery Expression) Expression    { return colEqSub(c, subQuery) }
+func (c Float32Column) NotEqSub(subQuery Expression) Expression { return colNotEqSub(c, subQuery) }
+
+func (c Float32Column) In(vals ...float32) Expression {
+	return colIn(c, convertToAny(vals...))
+}
+
+func (c Float32Column) InSub(subQuery Expression) Expression { return colInSub(c, subQuery) }
+
+func (c Float32Column) NotIn(vals ...float32) Expression {
+	return colNotIn(c, convertToAny(vals...))
+}
+
+func (c Float32Column) NotInSub(subQuery Expression) Expression { return colNotInSub(c, subQuery) }
+
+func (c Float32Column) Between(min, max float32) Expression { return colBetween(c, min, max) }
+func (c Float32Column) IsNull() Expression                  { return colIsNull(c) }
+func (c Float32Column) IsNotNull() Expression               { return colIsNotNull(c) }
+
+type AnyColumn struct {
+	name  string
+	table *string
+	alias *string
+}
+
+func (c AnyColumn) Sql() string {
+	if c.alias != nil {
+		return *c.alias
+	}
+	if c.table != nil && *c.table != "" {
+		return fmt.Sprintf("%s.%s", *c.table, c.name)
+	}
+	return c.name
+}
+
+func (c AnyColumn) Args() []any        { return nil }
+func (c AnyColumn) ColumnName() string { return c.name }
+func (c AnyColumn) TableName() string {
+	if c.table != nil {
+		return *c.table
+	}
+	return ""
+}
+
+func (c AnyColumn) Alias() *string {
+	if c.alias != nil && *c.alias != "" {
+		return c.alias
+	}
+	return nil
+}
+
+func (c AnyColumn) As(alias string) AnyColumn {
+	return AnyColumn{
+		name:  c.name,
+		table: c.table,
+		alias: &alias,
+	}
+}
+
+func (c AnyColumn) Eq(val any) Expression    { return colEq(c, val) }
+func (c AnyColumn) NotEq(val any) Expression { return colNotEq(c, val) }
+func (c AnyColumn) Gt(val any) Expression    { return colGt(c, val) }
+func (c AnyColumn) Gte(val any) Expression   { return colGte(c, val) }
+func (c AnyColumn) Lt(val any) Expression    { return colLt(c, val) }
+func (c AnyColumn) Lte(val any) Expression   { return colLte(c, val) }
+
+func (c AnyColumn) EqSub(subQuery Expression) Expression    { return colEqSub(c, subQuery) }
+func (c AnyColumn) NotEqSub(subQuery Expression) Expression { return colNotEqSub(c, subQuery) }
+
+func (c AnyColumn) In(vals ...any) Expression    { return colIn(c, vals) }
+func (c AnyColumn) InSub(subQuery Expression) Expression { return colInSub(c, subQuery) }
+
+func (c AnyColumn) NotIn(vals ...any) Expression    { return colNotIn(c, vals) }
+func (c AnyColumn) NotInSub(subQuery Expression) Expression { return colNotInSub(c, subQuery) }
+
+func (c AnyColumn) Between(min, max any) Expression { return colBetween(c, min, max) }
+func (c AnyColumn) IsNull() Expression              { return colIsNull(c) }
+func (c AnyColumn) IsNotNull() Expression           { return colIsNotNull(c) }
 
 type JSONBColumn[T JSONB] struct {
 	name  string
