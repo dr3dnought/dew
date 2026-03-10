@@ -385,6 +385,43 @@ func TestAggColumns(t *testing.T) {
 	}
 }
 
+func TestAggColumn_Comparisons(t *testing.T) {
+	col := testColumn{sql: "users.age", name: "age"}
+
+	tests := []struct {
+		name string
+		expr Expression
+		sql  string
+		args []any
+	}{
+		{"Sum Gt", Sum(col).Gt(100), "SUM(users.age) > ?", []any{100}},
+		{"Sum Gte", Sum(col).Gte(100), "SUM(users.age) >= ?", []any{100}},
+		{"Avg Lt", Avg(col).Lt(50.5), "AVG(users.age) < ?", []any{50.5}},
+		{"Avg Lte", Avg(col).Lte(50.5), "AVG(users.age) <= ?", []any{50.5}},
+		{"Max Eq", Max(col).Eq(99), "MAX(users.age) = ?", []any{99}},
+		{"Min NotEq", Min(col).NotEq(0), "MIN(users.age) != ?", []any{0}},
+		{"Count Gt", Count().Gt(5), "COUNT(*) > ?", []any{5}},
+		{"Count col Lt", Count(col).Lt(10), "COUNT(users.age) < ?", []any{10}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.expr.Sql() != tt.sql {
+				t.Errorf("Sql = %q, want %q", tt.expr.Sql(), tt.sql)
+			}
+			if len(tt.expr.Args()) != len(tt.args) {
+				t.Errorf("Args len = %d, want %d", len(tt.expr.Args()), len(tt.args))
+				return
+			}
+			for i, v := range tt.args {
+				if tt.expr.Args()[i] != v {
+					t.Errorf("Args[%d]=%v, want %v", i, tt.expr.Args()[i], v)
+				}
+			}
+		})
+	}
+}
+
 func TestAliasExpr(t *testing.T) {
 	base := simpleExpr{sql: "a + b", args: []any{1, 2}}
 	col := As(base, "sum_ab")

@@ -507,6 +507,24 @@ func TestSelector_HavingMultiple(t *testing.T) {
 	}
 }
 
+func TestSelector_HavingWithAggComparison(t *testing.T) {
+	sql, args, _ := testTable.From(pgDB).
+		Select(tName, Count()).
+		GroupBy(tName).
+		Having(Count().Gt(5), Sum(tAge).Lte(100)).
+		ToSql()
+
+	wantSQL := "SELECT users.name, COUNT(*) FROM users GROUP BY users.name HAVING COUNT(*) > $1 AND SUM(users.age) <= $2"
+	wantArgs := []any{5, 100}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
 func TestSelector_GroupByMultiple(t *testing.T) {
 	sql, _, _ := testTable.From(pgDB).
 		Select(tName, tAge, Count()).

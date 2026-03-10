@@ -139,8 +139,19 @@ users, err := Users.From(db).
 results, err := Users.From(db).
     Select(Users.Name, dew.Count()).
     GroupBy(Users.Name).
-    Having(dew.Raw("COUNT(*) > ?", 5)).
+    Having(dew.Count().Gt(5)).
     All()
+```
+
+Multiple Having conditions:
+
+```go
+results, err := Users.From(db).
+    Select(Users.Name, dew.Count(), dew.Sum(Users.Age)).
+    GroupBy(Users.Name).
+    Having(dew.Count().Gte(2), dew.Sum(Users.Age).Lt(200)).
+    All()
+// ... HAVING COUNT(*) >= $1 AND SUM(users.age) < $2
 ```
 
 ## Aggregates

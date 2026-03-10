@@ -178,23 +178,47 @@ func (a *aggColumn) Alias() *string {
 	return nil
 }
 
-func Sum(col Expression) Column {
+func (a *aggColumn) Eq(val any) Expression {
+	return colEq(a, val)
+}
+
+func (a *aggColumn) NotEq(val any) Expression {
+	return colNotEq(a, val)
+}
+
+func (a *aggColumn) Gt(val any) Expression {
+	return colGt(a, val)
+}
+
+func (a *aggColumn) Gte(val any) Expression {
+	return colGte(a, val)
+}
+
+func (a *aggColumn) Lt(val any) Expression {
+	return colLt(a, val)
+}
+
+func (a *aggColumn) Lte(val any) Expression {
+	return colLte(a, val)
+}
+
+func Sum(col Expression) *aggColumn {
 	return &aggColumn{fnType: SUM, col: col.Sql()}
 }
 
-func Avg(col Expression) Column {
+func Avg(col Expression) *aggColumn {
 	return &aggColumn{fnType: AVG, col: col.Sql()}
 }
 
-func Max(col Expression) Column {
+func Max(col Expression) *aggColumn {
 	return &aggColumn{fnType: MAX, col: col.Sql()}
 }
 
-func Min(col Expression) Column {
+func Min(col Expression) *aggColumn {
 	return &aggColumn{fnType: MIN, col: col.Sql()}
 }
 
-func Count(columns ...Column) Column {
+func Count(columns ...Column) *aggColumn {
 	col := "*"
 	if len(columns) > 0 {
 		col = columns[0].Sql()

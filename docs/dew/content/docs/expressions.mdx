@@ -103,6 +103,35 @@ Users.From(db).
     All()
 ```
 
+### Comparisons on aggregates
+
+Aggregate functions support `Eq`, `NotEq`, `Gt`, `Gte`, `Lt`, `Lte` — useful in `Having` clauses without falling back to `Raw()`:
+
+```go
+Users.From(db).
+    Select(Users.Name, dew.Count()).
+    GroupBy(Users.Name).
+    Having(
+        dew.Count().Gt(5),
+        dew.Sum(Users.Age).Lte(100),
+    ).
+    All()
+// ... HAVING COUNT(*) > $1 AND SUM(users.age) <= $2
+```
+
+```go
+// More examples
+dew.Count().Gt(5)              // COUNT(*) > ?
+dew.Sum(Users.Age).Gte(100)    // SUM(users.age) >= ?
+dew.Avg(Orders.Total).Lt(50.0) // AVG(orders.total) < ?
+dew.Max(Users.Age).Eq(99)      // MAX(users.age) = ?
+dew.Min(Users.Age).NotEq(0)    // MIN(users.age) != ?
+```
+
+<Callout type="info">
+Comparisons accept `any` because the database determines the aggregate return type — `SUM(int)` can overflow to `bigint`, `AVG(int)` returns `numeric`, etc.
+</Callout>
+
 ## Aliases
 
 Use `dew.As()` to alias any expression:
