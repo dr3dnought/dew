@@ -7,13 +7,19 @@
 
 A lightweight, type-safe query builder for Go. No ORM magic, no repo layers — just queries.
 
+**[Documentation](https://dew.xenous.org)** | **[Getting Started](https://dew.xenous.org/docs)** | **[Examples](https://dew.xenous.org/docs/examples-vs-sql)**
+
 ## Features
 
 - **Type-safe** — typed columns, compile-time checked queries
 - **Zero codegen** — generics only, no build step
 - **Composable** — builder pattern with `Clone()` for query branching
 - **Multi-dialect** — PostgreSQL, MySQL, MSSQL, SQLite
+- **Any driver** — works with `lib/pq`, `pgx`, `go-sql-driver/mysql`, `modernc/sqlite`, and more
 - **Transactions** — `Querier` interface works with both `*DB` and `*Tx`
+- **Error mapping** — user-provided `ErrorMapper` for driver-agnostic error handling
+- **Batch insert** — automatic chunking with `Batch(size)`
+- **RowScanner** — custom struct scanning via `ScanRow(*sql.Rows) error` interface
 - **JSONB** — first-class PostgreSQL JSONB column support
 - **CTEs** — `WITH` and `WITH RECURSIVE` support
 - **Set operations** — `UNION`, `UNION ALL`, `INTERSECT`, `EXCEPT`
@@ -169,7 +175,7 @@ q1 := Users.From(db).Select(Users.Name).Where(Users.Age.Gt(18))
 q2 := Users.From(db).Select(Users.Name).Where(Users.Age.Lt(5))
 q3 := Users.From(db).Select(Users.Name).Where(Users.Name.Eq("Admin"))
 
-sql, args := dew.Union[User](db, q1, q2).UnionAll(q3).ToSql()
+sql, args, _ := dew.Union[User](db, q1, q2).UnionAll(q3).ToSql()
 
 // (SELECT ...) UNION (SELECT ...) UNION ALL (SELECT ...)
 ```
@@ -202,7 +208,16 @@ dew.SQLiteDialect{}      // ?, ?, ...
 
 ## Documentation
 
-Full documentation: https://dr3dnought.github.io/dew/
+Full documentation: **https://dew.xenous.org**
+
+- [Getting Started](https://dew.xenous.org/docs) — install, connect, first query
+- [Schema](https://dew.xenous.org/docs/schema) — models, column types, DefineSchema
+- [SELECT](https://dew.xenous.org/docs/select) — queries, joins, RowScanner, ScanWith
+- [INSERT](https://dew.xenous.org/docs/insert) — single/multi/batch insert, upsert
+- [UPDATE](https://dew.xenous.org/docs/update) / [DELETE](https://dew.xenous.org/docs/delete) — with RETURNING support
+- [CTEs](https://dew.xenous.org/docs/cte) / [Set Operations](https://dew.xenous.org/docs/set-operations) / [Subquery FROM](https://dew.xenous.org/docs/subquery-from)
+- [Error Mapping](https://dew.xenous.org/docs/error-mapping) — driver-agnostic error handling
+- [Dialects & Drivers](https://dew.xenous.org/docs/dialects) — PostgreSQL, MySQL, SQLite, MSSQL
 
 ## License
 
