@@ -565,6 +565,83 @@ func TestAnyColumn(t *testing.T) {
 	}
 }
 
+func TestEnumColumn(t *testing.T) {
+	type Status string
+	const (
+		Active  Status = "active"
+		Banned  Status = "banned"
+		Pending Status = "pending"
+	)
+
+	tbl := "users"
+	col := EnumColumn[Status]{name: "status", table: &tbl}
+
+	if col.Sql() != "users.status" {
+		t.Errorf("Sql = %q, want %q", col.Sql(), "users.status")
+	}
+	if col.ColumnName() != "status" {
+		t.Errorf("ColumnName = %q, want %q", col.ColumnName(), "status")
+	}
+	if col.TableName() != "users" {
+		t.Errorf("TableName = %q, want %q", col.TableName(), "users")
+	}
+
+	tests := []struct {
+		name string
+		expr Expression
+		sql  string
+		args []any
+	}{
+		{"Eq", col.Eq(Active), "users.status = ?", []any{Active}},
+		{"NotEq", col.NotEq(Banned), "users.status != ?", []any{Banned}},
+		{"In", col.In(Active, Pending), "users.status IN (?, ?)", []any{Active, Pending}},
+		{"NotIn", col.NotIn(Banned), "users.status NOT IN (?)", []any{Banned}},
+		{"IsNull", col.IsNull(), "users.status IS NULL", nil},
+		{"IsNotNull", col.IsNotNull(), "users.status IS NOT NULL", nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.expr.Sql() != tt.sql {
+				t.Errorf("Sql = %q, want %q", tt.expr.Sql(), tt.sql)
+			}
+			if tt.args == nil {
+				if len(tt.expr.Args()) != 0 {
+					t.Errorf("Args = %v, want []", tt.expr.Args())
+				}
+				return
+			}
+			if len(tt.expr.Args()) != len(tt.args) {
+				t.Errorf("Args len = %d, want %d", len(tt.expr.Args()), len(tt.args))
+				return
+			}
+			for i, v := range tt.args {
+				if tt.expr.Args()[i] != v {
+					t.Errorf("Args[%d]=%v, want %v", i, tt.expr.Args()[i], v)
+				}
+			}
+		})
+	}
+
+	// Test alias
+	aliased := col.As("user_status")
+	if aliased.Sql() != "user_status" {
+		t.Errorf("aliased Sql = %q, want %q", aliased.Sql(), "user_status")
+	}
+	if aliased.Alias() == nil || *aliased.Alias() != "user_status" {
+		t.Errorf("Alias() = %v, want user_status", aliased.Alias())
+	}
+
+	// Test without table
+	noTable := EnumColumn[Status]{name: "status"}
+	if noTable.Sql() != "status" {
+		t.Errorf("no table Sql = %q, want %q", noTable.Sql(), "status")
+	}
+	if noTable.TableName() != "" {
+		t.Errorf("no table TableName = %q, want empty", noTable.TableName())
+	}
+}
+
 func TestRaw(t *testing.T) {
 	tests := []struct {
 		name string

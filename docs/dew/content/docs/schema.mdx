@@ -73,12 +73,57 @@ The schema embeds `dew.Table[User]`, which gives you `Users.From(db)`, `Users.In
 | `t.UUIDColumn("name")` | `UUIDColumn` | `string` |
 | `t.BytesColumn("name")` | `BytesColumn` | `[]byte` |
 | `t.AnyColumn("name")` | `AnyColumn` | `any` |
+| `dew.DefineEnumColumn[T](t, "name")` | `EnumColumn[T]` | `~string` |
 
 For JSONB columns, see [JSONB](/docs/jsonb).
 
 <Callout type="info">
-Use `Int64Column` for `bigserial` / `bigint` primary keys and large counters. Use `AnyColumn` as an escape hatch for types dew doesn't cover natively — all its methods accept `any`.
+Use `Int64Column` for `bigserial` / `bigint` primary keys and large counters. Use `AnyColumn` as an escape hatch for types dew doesn't cover natively — all its methods accept `any`. Use `EnumColumn` for string-based enum types — it gives you compile-time safety by restricting values to your custom type.
 </Callout>
+
+### EnumColumn
+
+`EnumColumn` is generic over any `~string` type. Since Go doesn't allow type parameters on methods, use the standalone `DefineEnumColumn` function:
+
+```go
+type Status string
+
+const (
+    StatusActive  Status = "active"
+    StatusBanned  Status = "banned"
+    StatusPending Status = "pending"
+)
+
+var Users = dew.DefineSchema("users", dew.PostgreSQLDialect{}, func(t dew.Table[User]) struct {
+    dew.Table[User]
+    ID     dew.IntColumn
+    Name   dew.StringColumn
+    Status dew.EnumColumn[Status]
+} {
+    return struct {
+        dew.Table[User]
+        ID     dew.IntColumn
+        Name   dew.StringColumn
+        Status dew.EnumColumn[Status]
+    }{
+        Table:  t,
+        ID:     t.IntColumn("id"),
+        Name:   t.StringColumn("name"),
+        Status: dew.DefineEnumColumn[Status](t, "status"),
+    }
+})
+```
+
+```go
+// Type-safe — only accepts Status values
+Users.From(db).Where(Users.Status.Eq(StatusActive))
+Users.From(db).Where(Users.Status.In(StatusActive, StatusPending))
+
+// Won't compile:
+Users.From(db).Where(Users.Status.Eq("random"))
+```
+
+`EnumColumn` supports: `Eq`, `NotEq`, `In`, `NotIn`, `IsNull`, `IsNotNull`.
 
 ## Column operators
 
@@ -110,6 +155,36 @@ String columns have:
 |--------|-----|
 | `col.Like(pattern)` | `col LIKE ?` |
 | `col.ILike(pattern)` | `col ILIKE ?` |
+
+## Nullable fields
+
+Dew columns generate SQL — they don't control how Go scans the result. For nullable database columns, use `sql.Null*` types in your struct with the same column type in the schema:
+
+```go
+type User struct {
+    ID    int
+    Name  string
+    Email sql.NullString // nullable in DB
+    Age   sql.NullInt64  // nullable in DB
+}
+
+var Users = dew.DefineSchema("users", dew.PostgreSQLDialect{}, func(t dew.Table[User]) struct {
+    dew.Table[User]
+    ID    dew.IntColumn
+    Name  dew.StringColumn
+    Email dew.StringColumn // same column type — SQL doesn't change
+    Age   dew.Int64Column  // same column type
+} {
+    // ...
+})
+
+// IsNull / IsNotNull work on every column type
+Users.From(db).Where(Users.Email.IsNull()).All(ctx)
+```
+
+<Callout type="info">
+No special `NullStringColumn` or `NullIntColumn` needed. Column types control SQL generation, struct field types control scanning — they're independent.
+</Callout>
 
 ## Aliases
 

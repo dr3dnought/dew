@@ -122,6 +122,17 @@ func (t Table[T]) UUIDColumn(name string) UUIDColumn {
 	}
 }
 
+// DefineEnumColumn creates a typed enum column.
+// Due to Go generics limitation, this is a standalone function, not a method.
+// Usage: dew.DefineEnumColumn[Status](t, "status")
+func DefineEnumColumn[V ~string, T any](t Table[T], name string) EnumColumn[V] {
+	tableName := t.name
+	return EnumColumn[V]{
+		name:  name,
+		table: &tableName,
+	}
+}
+
 // JSONBColumn creates a typed JSONB column.
 // Due to Go generics limitation, this is a standalone function, not a method.
 // Usage: dew.JSONBColumn[MyType](t, "column_name")

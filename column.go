@@ -784,6 +784,60 @@ func (c AnyColumn) Between(min, max any) Expression { return colBetween(c, min, 
 func (c AnyColumn) IsNull() Expression              { return colIsNull(c) }
 func (c AnyColumn) IsNotNull() Expression           { return colIsNotNull(c) }
 
+type EnumColumn[T ~string] struct {
+	name  string
+	table *string
+	alias *string
+}
+
+func (c EnumColumn[T]) Sql() string {
+	if c.alias != nil {
+		return *c.alias
+	}
+	if c.table != nil && *c.table != "" {
+		return fmt.Sprintf("%s.%s", *c.table, c.name)
+	}
+	return c.name
+}
+
+func (c EnumColumn[T]) Args() []any        { return nil }
+func (c EnumColumn[T]) ColumnName() string { return c.name }
+func (c EnumColumn[T]) TableName() string {
+	if c.table != nil {
+		return *c.table
+	}
+	return ""
+}
+
+func (c EnumColumn[T]) Alias() *string {
+	if c.alias != nil && *c.alias != "" {
+		return c.alias
+	}
+	return nil
+}
+
+func (c EnumColumn[T]) As(alias string) EnumColumn[T] {
+	return EnumColumn[T]{
+		name:  c.name,
+		table: c.table,
+		alias: &alias,
+	}
+}
+
+func (c EnumColumn[T]) Eq(val T) Expression    { return colEq(c, val) }
+func (c EnumColumn[T]) NotEq(val T) Expression { return colNotEq(c, val) }
+
+func (c EnumColumn[T]) In(vals ...T) Expression {
+	return colIn(c, convertToAny(vals...))
+}
+
+func (c EnumColumn[T]) NotIn(vals ...T) Expression {
+	return colNotIn(c, convertToAny(vals...))
+}
+
+func (c EnumColumn[T]) IsNull() Expression    { return colIsNull(c) }
+func (c EnumColumn[T]) IsNotNull() Expression { return colIsNotNull(c) }
+
 type JSONBColumn[T JSONB] struct {
 	name  string
 	table *string
