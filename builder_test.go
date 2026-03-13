@@ -1580,6 +1580,571 @@ func TestDB_MapError_SentinelErrors(t *testing.T) {
 	}
 }
 
+// ─── Schema Factory Methods ─────────────────────────────────
+
+func TestSchemaFactoryMethods(t *testing.T) {
+	table := NewTable[testUser]("items", PostgreSQLDialect{})
+
+	t.Run("Int64Column", func(t *testing.T) {
+		col := table.Int64Column("big_id")
+		if col.ColumnName() != "big_id" {
+			t.Errorf("ColumnName = %q", col.ColumnName())
+		}
+		if col.TableName() != "items" {
+			t.Errorf("TableName = %q", col.TableName())
+		}
+		if col.Sql() != "items.big_id" {
+			t.Errorf("Sql = %q", col.Sql())
+		}
+	})
+
+	t.Run("BoolColumn", func(t *testing.T) {
+		col := table.BoolColumn("active")
+		if col.Sql() != "items.active" {
+			t.Errorf("Sql = %q", col.Sql())
+		}
+	})
+
+	t.Run("TimeColumn", func(t *testing.T) {
+		col := table.TimeColumn("created_at")
+		if col.Sql() != "items.created_at" {
+			t.Errorf("Sql = %q", col.Sql())
+		}
+	})
+
+	t.Run("DecimalColumn", func(t *testing.T) {
+		col := table.DecimalColumn("price")
+		if col.Sql() != "items.price" {
+			t.Errorf("Sql = %q", col.Sql())
+		}
+	})
+
+	t.Run("BytesColumn", func(t *testing.T) {
+		col := table.BytesColumn("data")
+		if col.Sql() != "items.data" {
+			t.Errorf("Sql = %q", col.Sql())
+		}
+	})
+
+	t.Run("Float32Column", func(t *testing.T) {
+		col := table.Float32Column("rating")
+		if col.Sql() != "items.rating" {
+			t.Errorf("Sql = %q", col.Sql())
+		}
+	})
+
+	t.Run("AnyColumn", func(t *testing.T) {
+		col := table.AnyColumn("meta")
+		if col.Sql() != "items.meta" {
+			t.Errorf("Sql = %q", col.Sql())
+		}
+	})
+
+	t.Run("UUIDColumn", func(t *testing.T) {
+		col := table.UUIDColumn("uuid")
+		if col.Sql() != "items.uuid" {
+			t.Errorf("Sql = %q", col.Sql())
+		}
+	})
+}
+
+type Status string
+
+func TestDefineEnumColumn(t *testing.T) {
+	table := NewTable[testUser]("users", PostgreSQLDialect{})
+	col := DefineEnumColumn[Status](table, "status")
+
+	if col.ColumnName() != "status" {
+		t.Errorf("ColumnName = %q", col.ColumnName())
+	}
+	if col.TableName() != "users" {
+		t.Errorf("TableName = %q", col.TableName())
+	}
+	if col.Sql() != "users.status" {
+		t.Errorf("Sql = %q", col.Sql())
+	}
+}
+
+func TestDefineSchema(t *testing.T) {
+	type Item struct {
+		ID   int
+		Name string
+	}
+
+	schema := DefineSchema("items", PostgreSQLDialect{}, func(t Table[Item]) struct {
+		Table[Item]
+		ID   IntColumn
+		Name StringColumn
+	} {
+		return struct {
+			Table[Item]
+			ID   IntColumn
+			Name StringColumn
+		}{
+			Table: t,
+			ID:    t.IntColumn("id"),
+			Name:  t.StringColumn("name"),
+		}
+	})
+
+	if schema.TableName() != "items" {
+		t.Errorf("TableName = %q", schema.TableName())
+	}
+	if schema.ID.Sql() != "items.id" {
+		t.Errorf("ID.Sql = %q", schema.ID.Sql())
+	}
+	if schema.Name.Sql() != "items.name" {
+		t.Errorf("Name.Sql = %q", schema.Name.Sql())
+	}
+
+	// Verify builders work via schema
+	sql, _, _ := schema.From(pgDB).Where(schema.ID.Eq(1)).ToSql()
+	want := "SELECT * FROM items WHERE items.id = $1"
+	if sql != want {
+		t.Errorf("sql = %q, want %q", sql, want)
+	}
+}
+
+// ─── Column Accessor Methods (newer types) ──────────────────
+
+func TestDecimalColumn_Accessors(t *testing.T) {
+	tbl := "products"
+	col := DecimalColumn{name: "price", table: &tbl}
+
+	if col.Args() != nil {
+		t.Errorf("Args = %v, want nil", col.Args())
+	}
+	if col.ColumnName() != "price" {
+		t.Errorf("ColumnName = %q", col.ColumnName())
+	}
+	if col.TableName() != "products" {
+		t.Errorf("TableName = %q", col.TableName())
+	}
+	if col.Alias() != nil {
+		t.Errorf("Alias = %v, want nil", col.Alias())
+	}
+
+	aliased := col.As("unit_price")
+	if aliased.Alias() == nil || *aliased.Alias() != "unit_price" {
+		t.Errorf("aliased.Alias = %v", aliased.Alias())
+	}
+	if aliased.Sql() != "unit_price" {
+		t.Errorf("aliased.Sql = %q", aliased.Sql())
+	}
+
+	// No table
+	noTbl := DecimalColumn{name: "price"}
+	if noTbl.TableName() != "" {
+		t.Errorf("noTbl.TableName = %q", noTbl.TableName())
+	}
+	if noTbl.Sql() != "price" {
+		t.Errorf("noTbl.Sql = %q", noTbl.Sql())
+	}
+
+	// EqSub / NotEqSub
+	sub := Raw("SELECT MIN(price) FROM products")
+	if col.EqSub(sub).Sql() != "products.price = (SELECT MIN(price) FROM products)" {
+		t.Errorf("EqSub Sql = %q", col.EqSub(sub).Sql())
+	}
+	if col.NotEqSub(sub).Sql() != "products.price != (SELECT MIN(price) FROM products)" {
+		t.Errorf("NotEqSub Sql = %q", col.NotEqSub(sub).Sql())
+	}
+	if col.InSub(sub).Sql() != "products.price IN (SELECT MIN(price) FROM products)" {
+		t.Errorf("InSub Sql = %q", col.InSub(sub).Sql())
+	}
+	if col.NotInSub(sub).Sql() != "products.price NOT IN (SELECT MIN(price) FROM products)" {
+		t.Errorf("NotInSub Sql = %q", col.NotInSub(sub).Sql())
+	}
+}
+
+func TestFloat32Column_Accessors(t *testing.T) {
+	tbl := "sensors"
+	col := Float32Column{name: "value", table: &tbl}
+
+	if col.Args() != nil {
+		t.Errorf("Args = %v, want nil", col.Args())
+	}
+	if col.ColumnName() != "value" {
+		t.Errorf("ColumnName = %q", col.ColumnName())
+	}
+	if col.TableName() != "sensors" {
+		t.Errorf("TableName = %q", col.TableName())
+	}
+	if col.Alias() != nil {
+		t.Errorf("Alias = %v, want nil", col.Alias())
+	}
+
+	noTbl := Float32Column{name: "value"}
+	if noTbl.TableName() != "" {
+		t.Errorf("noTbl.TableName = %q", noTbl.TableName())
+	}
+
+	// IsNull / IsNotNull
+	if col.IsNull().Sql() != "sensors.value IS NULL" {
+		t.Errorf("IsNull = %q", col.IsNull().Sql())
+	}
+	if col.IsNotNull().Sql() != "sensors.value IS NOT NULL" {
+		t.Errorf("IsNotNull = %q", col.IsNotNull().Sql())
+	}
+
+	// EqSub / NotEqSub / InSub / NotInSub
+	sub := Raw("SELECT 1")
+	if col.EqSub(sub).Sql() != "sensors.value = (SELECT 1)" {
+		t.Errorf("EqSub = %q", col.EqSub(sub).Sql())
+	}
+	if col.NotEqSub(sub).Sql() != "sensors.value != (SELECT 1)" {
+		t.Errorf("NotEqSub = %q", col.NotEqSub(sub).Sql())
+	}
+	if col.InSub(sub).Sql() != "sensors.value IN (SELECT 1)" {
+		t.Errorf("InSub = %q", col.InSub(sub).Sql())
+	}
+	if col.NotInSub(sub).Sql() != "sensors.value NOT IN (SELECT 1)" {
+		t.Errorf("NotInSub = %q", col.NotInSub(sub).Sql())
+	}
+}
+
+func TestBytesColumn_Accessors(t *testing.T) {
+	tbl := "files"
+	col := BytesColumn{name: "data", table: &tbl}
+
+	if col.Args() != nil {
+		t.Errorf("Args = %v, want nil", col.Args())
+	}
+	if col.ColumnName() != "data" {
+		t.Errorf("ColumnName = %q", col.ColumnName())
+	}
+	if col.Alias() != nil {
+		t.Errorf("Alias = %v, want nil", col.Alias())
+	}
+
+	noTbl := BytesColumn{name: "data"}
+	if noTbl.TableName() != "" {
+		t.Errorf("noTbl.TableName = %q", noTbl.TableName())
+	}
+	if noTbl.Sql() != "data" {
+		t.Errorf("noTbl.Sql = %q", noTbl.Sql())
+	}
+
+	aliased := col.As("file_data")
+	if aliased.Alias() == nil || *aliased.Alias() != "file_data" {
+		t.Errorf("aliased.Alias = %v", aliased.Alias())
+	}
+
+	// NotEq / IsNotNull
+	if col.NotEq([]byte("x")).Sql() != "files.data != ?" {
+		t.Errorf("NotEq = %q", col.NotEq([]byte("x")).Sql())
+	}
+	if col.IsNotNull().Sql() != "files.data IS NOT NULL" {
+		t.Errorf("IsNotNull = %q", col.IsNotNull().Sql())
+	}
+}
+
+func TestEnumColumn_Accessors(t *testing.T) {
+	tbl := "users"
+	col := EnumColumn[Status]{name: "status", table: &tbl}
+
+	if col.Args() != nil {
+		t.Errorf("Args = %v, want nil", col.Args())
+	}
+	if col.ColumnName() != "status" {
+		t.Errorf("ColumnName = %q", col.ColumnName())
+	}
+	if col.TableName() != "users" {
+		t.Errorf("TableName = %q", col.TableName())
+	}
+	if col.Alias() != nil {
+		t.Errorf("Alias = %v, want nil", col.Alias())
+	}
+
+	noTbl := EnumColumn[Status]{name: "status"}
+	if noTbl.TableName() != "" {
+		t.Errorf("noTbl.TableName = %q", noTbl.TableName())
+	}
+}
+
+func TestInt64Column_Accessors(t *testing.T) {
+	tbl := "orders"
+	col := Int64Column{name: "amount", table: &tbl}
+
+	if col.Args() != nil {
+		t.Errorf("Args = %v, want nil", col.Args())
+	}
+	if col.ColumnName() != "amount" {
+		t.Errorf("ColumnName = %q", col.ColumnName())
+	}
+	if col.Alias() != nil {
+		t.Errorf("Alias = %v, want nil", col.Alias())
+	}
+
+	noTbl := Int64Column{name: "amount"}
+	if noTbl.TableName() != "" {
+		t.Errorf("noTbl.TableName = %q", noTbl.TableName())
+	}
+
+	// NotEq / Gte / Lte / IsNotNull / NotIn / EqSub / NotEqSub / InSub / NotInSub
+	if col.NotEq(5).Sql() != "orders.amount != ?" {
+		t.Errorf("NotEq = %q", col.NotEq(5).Sql())
+	}
+	if col.Gte(10).Sql() != "orders.amount >= ?" {
+		t.Errorf("Gte = %q", col.Gte(10).Sql())
+	}
+	if col.Lte(100).Sql() != "orders.amount <= ?" {
+		t.Errorf("Lte = %q", col.Lte(100).Sql())
+	}
+	if col.IsNotNull().Sql() != "orders.amount IS NOT NULL" {
+		t.Errorf("IsNotNull = %q", col.IsNotNull().Sql())
+	}
+	if col.NotIn(1, 2).Sql() != "orders.amount NOT IN (?, ?)" {
+		t.Errorf("NotIn = %q", col.NotIn(1, 2).Sql())
+	}
+	sub := Raw("SELECT 1")
+	if col.EqSub(sub).Sql() != "orders.amount = (SELECT 1)" {
+		t.Errorf("EqSub = %q", col.EqSub(sub).Sql())
+	}
+	if col.NotEqSub(sub).Sql() != "orders.amount != (SELECT 1)" {
+		t.Errorf("NotEqSub = %q", col.NotEqSub(sub).Sql())
+	}
+	if col.InSub(sub).Sql() != "orders.amount IN (SELECT 1)" {
+		t.Errorf("InSub = %q", col.InSub(sub).Sql())
+	}
+	if col.NotInSub(sub).Sql() != "orders.amount NOT IN (SELECT 1)" {
+		t.Errorf("NotInSub = %q", col.NotInSub(sub).Sql())
+	}
+}
+
+func TestAnyColumn_Accessors(t *testing.T) {
+	tbl := "events"
+	col := AnyColumn{name: "data", table: &tbl}
+
+	if col.Args() != nil {
+		t.Errorf("Args = %v, want nil", col.Args())
+	}
+	if col.ColumnName() != "data" {
+		t.Errorf("ColumnName = %q", col.ColumnName())
+	}
+	if col.Alias() != nil {
+		t.Errorf("Alias = %v, want nil", col.Alias())
+	}
+
+	noTbl := AnyColumn{name: "data"}
+	if noTbl.TableName() != "" {
+		t.Errorf("noTbl.TableName = %q", noTbl.TableName())
+	}
+
+	aliased := col.As("event_data")
+	if aliased.Alias() == nil || *aliased.Alias() != "event_data" {
+		t.Errorf("aliased.Alias = %v", aliased.Alias())
+	}
+
+	sub := Raw("SELECT 1")
+	if col.EqSub(sub).Sql() != "events.data = (SELECT 1)" {
+		t.Errorf("EqSub = %q", col.EqSub(sub).Sql())
+	}
+	if col.NotEqSub(sub).Sql() != "events.data != (SELECT 1)" {
+		t.Errorf("NotEqSub = %q", col.NotEqSub(sub).Sql())
+	}
+	if col.NotIn("a").Sql() != "events.data NOT IN (?)" {
+		t.Errorf("NotIn = %q", col.NotIn("a").Sql())
+	}
+	if col.Between(1, 10).Sql() != "events.data BETWEEN ? AND ?" {
+		t.Errorf("Between = %q", col.Between(1, 10).Sql())
+	}
+}
+
+// ─── ConflictInserter edge cases ────────────────────────────
+
+func TestConflictInserter_DoUpdateNoSets(t *testing.T) {
+	ci := testTable.Insert(pgDB).
+		Columns(tName, tEmail).
+		Values("Alice", "a@test.com").
+		OnConflict(tEmail)
+
+	// Force UPDATE action but no SetUpdate calls
+	ci.conflictAction = "UPDATE"
+
+	_, _, err := ci.ToSql()
+	if err == nil {
+		t.Fatal("expected error for DoUpdate with no SetUpdate")
+	}
+}
+
+func TestConflictInserter_DoUpdateWithExpression(t *testing.T) {
+	sql, args, err := testTable.Insert(pgDB).
+		Columns(tName, tEmail).
+		Values("Alice", "a@test.com").
+		OnConflict(tEmail).
+		SetUpdate(tName, Raw("EXCLUDED.name")).
+		ToSql()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !contains(sql, "DO UPDATE SET name = EXCLUDED.name") {
+		t.Errorf("sql missing expression set: %q", sql)
+	}
+	// Only 2 args from VALUES, none from the raw expression
+	wantArgs := []any{"Alice", "a@test.com"}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+func TestConflictInserter_Returning(t *testing.T) {
+	sql, _, err := testTable.Insert(pgDB).
+		Columns(tName, tEmail).
+		Values("Alice", "a@test.com").
+		OnConflict(tEmail).
+		DoNothing().
+		Returning(tID, tName).
+		ToSql()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !contains(sql, "RETURNING") {
+		t.Errorf("sql missing RETURNING: %q", sql)
+	}
+}
+
+func TestConflictInserter_ModelsAndValues(t *testing.T) {
+	u := &testUser{Name: "Alice"}
+	ci := testTable.Insert(pgDB).
+		Columns(tName).
+		Values("Bob").
+		OnConflict(tEmail).
+		DoNothing()
+	ci.models = append(ci.models, u)
+
+	_, _, err := ci.ToSql()
+	if err == nil {
+		t.Fatal("expected error for Models + Values in ConflictInserter")
+	}
+}
+
+func TestConflictInserter_ColumnsWithModels(t *testing.T) {
+	u := &testUser{Name: "Alice"}
+	ci := testTable.Insert(pgDB).
+		Models(u).
+		OnConflict(tEmail).
+		DoNothing()
+	ci.columns = []Column{tName}
+
+	_, _, err := ci.ToSql()
+	if err == nil {
+		t.Fatal("expected error for Columns + Models in ConflictInserter")
+	}
+}
+
+func TestConflictInserter_NoData(t *testing.T) {
+	ci := testTable.Insert(pgDB).
+		OnConflict(tEmail).
+		DoNothing()
+
+	_, _, err := ci.ToSql()
+	if err == nil {
+		t.Fatal("expected error for ConflictInserter with no data")
+	}
+}
+
+func TestConflictInserter_ValuesNoColumns(t *testing.T) {
+	ci := testTable.Insert(pgDB).
+		OnConflict(tEmail).
+		DoNothing()
+	ci.values = append(ci.values, []any{"Alice"})
+
+	_, _, err := ci.ToSql()
+	if err == nil {
+		t.Fatal("expected error for Values without Columns in ConflictInserter")
+	}
+}
+
+// ─── Selector Clone branches ────────────────────────────────
+
+func TestSelector_Clone_AllBranches(t *testing.T) {
+	ordersTable := NewTable[testUser]("orders", PostgreSQLDialect{})
+	oID := ordersTable.IntColumn("id")
+
+	base := testTable.From(pgDB).
+		Select(tID, tName).
+		Where(tAge.Gt(18)).
+		Distinct(tName).
+		OrderBy(Asc(tName)).
+		GroupBy(tName).
+		Having(Count().Gt(1)).
+		InnerJoin(ordersTable, tID, oID).
+		Limit(10).
+		Offset(5)
+
+	clone := base.Clone()
+
+	// Mutate clone — should not affect base
+	clone.Select(tEmail)
+	clone.Where(tName.Eq("Bob"))
+	clone.OrderBy(Desc(tAge))
+	clone.GroupBy(tAge)
+	clone.Having(Count().Lt(100))
+	clone.Limit(20)
+
+	baseSql, _, _ := base.ToSql()
+	cloneSql, _, _ := clone.ToSql()
+
+	if baseSql == cloneSql {
+		t.Errorf("clone mutation affected base: both = %q", baseSql)
+	}
+
+	// Verify base still has original values
+	if !contains(baseSql, "LIMIT 10") {
+		t.Errorf("base lost LIMIT 10: %q", baseSql)
+	}
+	if contains(baseSql, "LIMIT 20") {
+		t.Errorf("base got clone's LIMIT 20: %q", baseSql)
+	}
+}
+
+func TestSelector_Clone_WithCTEs(t *testing.T) {
+	sub := testTable.From(pgDB).Where(tAge.Gt(18))
+	base := From[testUser](pgDB, TableRef("adults")).
+		With(CTE("adults", sub)).
+		Where(Raw("1=1"))
+
+	clone := base.Clone()
+	clone.Where(Raw("adults.name = ?", "Alice"))
+
+	baseSql, baseArgs, _ := base.ToSql()
+	cloneSql, cloneArgs, _ := clone.ToSql()
+
+	if baseSql == cloneSql {
+		t.Errorf("clone CTE mutation affected base")
+	}
+	if len(baseArgs) == len(cloneArgs) {
+		t.Errorf("clone args should differ from base")
+	}
+}
+
+// ─── MSSQL Deleter ──────────────────────────────────────────
+
+func TestDeleter_MSSQL(t *testing.T) {
+	sql, args, err := testTable.Delete(mssqlDB).
+		Where(tID.Eq(1)).
+		ToSql()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantSQL := "DELETE FROM users WHERE users.id = @p1"
+	wantArgs := []any{1}
+
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("args = %v, want %v", args, wantArgs)
+	}
+}
+
 // ─── helpers ─────────────────────────────────────────────────
 
 func contains(s, substr string) bool {
