@@ -94,6 +94,13 @@ func (t Table[T]) TimeColumn(name string) TimeColumn {
 	}
 }
 
+func (t Table[T]) DecimalColumn(name string) DecimalColumn {
+	return DecimalColumn{
+		name:  name,
+		table: &t.name,
+	}
+}
+
 func (t Table[T]) BytesColumn(name string) BytesColumn {
 	return BytesColumn{
 		name:  name,

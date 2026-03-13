@@ -613,6 +613,72 @@ func (c UUIDColumn) IsNotNull() Expression {
 	return colIsNotNull(c)
 }
 
+type DecimalColumn struct {
+	name  string
+	table *string
+	alias *string
+}
+
+func (c DecimalColumn) Sql() string {
+	if c.alias != nil {
+		return *c.alias
+	}
+	if c.table != nil && *c.table != "" {
+		return fmt.Sprintf("%s.%s", *c.table, c.name)
+	}
+	return c.name
+}
+
+func (c DecimalColumn) Args() []any        { return nil }
+func (c DecimalColumn) ColumnName() string { return c.name }
+func (c DecimalColumn) TableName() string {
+	if c.table != nil {
+		return *c.table
+	}
+	return ""
+}
+
+func (c DecimalColumn) Alias() *string {
+	if c.alias != nil && *c.alias != "" {
+		return c.alias
+	}
+	return nil
+}
+
+func (c DecimalColumn) As(alias string) DecimalColumn {
+	return DecimalColumn{
+		name:  c.name,
+		table: c.table,
+		alias: &alias,
+	}
+}
+
+func (c DecimalColumn) Eq(val string) Expression       { return colEq(c, val) }
+func (c DecimalColumn) NotEq(val string) Expression    { return colNotEq(c, val) }
+func (c DecimalColumn) Gt(val string) Expression       { return colGt(c, val) }
+func (c DecimalColumn) Gte(val string) Expression      { return colGte(c, val) }
+func (c DecimalColumn) Lt(val string) Expression       { return colLt(c, val) }
+func (c DecimalColumn) Lte(val string) Expression      { return colLte(c, val) }
+
+func (c DecimalColumn) EqSub(subQuery Expression) Expression    { return colEqSub(c, subQuery) }
+func (c DecimalColumn) NotEqSub(subQuery Expression) Expression { return colNotEqSub(c, subQuery) }
+
+func (c DecimalColumn) In(vals ...string) Expression {
+	return colIn(c, convertToAny(vals...))
+}
+
+func (c DecimalColumn) InSub(subQuery Expression) Expression { return colInSub(c, subQuery) }
+
+func (c DecimalColumn) NotIn(vals ...string) Expression {
+	return colNotIn(c, convertToAny(vals...))
+}
+
+func (c DecimalColumn) NotInSub(subQuery Expression) Expression { return colNotInSub(c, subQuery) }
+
+func (c DecimalColumn) Between(min, max string) Expression { return colBetween(c, min, max) }
+func (c DecimalColumn) IsNull() Expression                 { return colIsNull(c) }
+func (c DecimalColumn) IsNotNull() Expression              { return colIsNotNull(c) }
+
 type BytesColumn struct {
 	name  string
 	table *string

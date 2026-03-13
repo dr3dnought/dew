@@ -565,6 +565,68 @@ func TestAnyColumn(t *testing.T) {
 	}
 }
 
+func TestDecimalColumn(t *testing.T) {
+	tbl := "products"
+	col := DecimalColumn{name: "price", table: &tbl}
+
+	if col.Sql() != "products.price" {
+		t.Errorf("Sql = %q, want %q", col.Sql(), "products.price")
+	}
+	if col.ColumnName() != "price" {
+		t.Errorf("ColumnName = %q, want %q", col.ColumnName(), "price")
+	}
+	if col.TableName() != "products" {
+		t.Errorf("TableName = %q, want %q", col.TableName(), "products")
+	}
+
+	tests := []struct {
+		name string
+		expr Expression
+		sql  string
+		args []any
+	}{
+		{"Eq", col.Eq("19.99"), "products.price = ?", []any{"19.99"}},
+		{"NotEq", col.NotEq("0.00"), "products.price != ?", []any{"0.00"}},
+		{"Gt", col.Gt("10.00"), "products.price > ?", []any{"10.00"}},
+		{"Gte", col.Gte("10.00"), "products.price >= ?", []any{"10.00"}},
+		{"Lt", col.Lt("50.00"), "products.price < ?", []any{"50.00"}},
+		{"Lte", col.Lte("50.00"), "products.price <= ?", []any{"50.00"}},
+		{"In", col.In("9.99", "19.99"), "products.price IN (?, ?)", []any{"9.99", "19.99"}},
+		{"NotIn", col.NotIn("0.00"), "products.price NOT IN (?)", []any{"0.00"}},
+		{"Between", col.Between("10.00", "50.00"), "products.price BETWEEN ? AND ?", []any{"10.00", "50.00"}},
+		{"IsNull", col.IsNull(), "products.price IS NULL", nil},
+		{"IsNotNull", col.IsNotNull(), "products.price IS NOT NULL", nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.expr.Sql() != tt.sql {
+				t.Errorf("Sql = %q, want %q", tt.expr.Sql(), tt.sql)
+			}
+			if tt.args == nil {
+				if len(tt.expr.Args()) != 0 {
+					t.Errorf("Args = %v, want []", tt.expr.Args())
+				}
+				return
+			}
+			if len(tt.expr.Args()) != len(tt.args) {
+				t.Errorf("Args len = %d, want %d", len(tt.expr.Args()), len(tt.args))
+				return
+			}
+			for i, v := range tt.args {
+				if tt.expr.Args()[i] != v {
+					t.Errorf("Args[%d]=%v, want %v", i, tt.expr.Args()[i], v)
+				}
+			}
+		})
+	}
+
+	aliased := col.As("unit_price")
+	if aliased.Sql() != "unit_price" {
+		t.Errorf("aliased Sql = %q, want %q", aliased.Sql(), "unit_price")
+	}
+}
+
 func TestEnumColumn(t *testing.T) {
 	type Status string
 	const (

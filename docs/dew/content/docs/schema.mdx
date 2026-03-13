@@ -71,6 +71,7 @@ The schema embeds `dew.Table[User]`, which gives you `Users.From(db)`, `Users.In
 | `t.Float32Column("name")` | `Float32Column` | `float32` |
 | `t.TimeColumn("name")` | `TimeColumn` | `time.Time` |
 | `t.UUIDColumn("name")` | `UUIDColumn` | `string` |
+| `t.DecimalColumn("name")` | `DecimalColumn` | `string` |
 | `t.BytesColumn("name")` | `BytesColumn` | `[]byte` |
 | `t.AnyColumn("name")` | `AnyColumn` | `any` |
 | `dew.DefineEnumColumn[T](t, "name")` | `EnumColumn[T]` | `~string` |
@@ -78,7 +79,7 @@ The schema embeds `dew.Table[User]`, which gives you `Users.From(db)`, `Users.In
 For JSONB columns, see [JSONB](/docs/jsonb).
 
 <Callout type="info">
-Use `Int64Column` for `bigserial` / `bigint` primary keys and large counters. Use `AnyColumn` as an escape hatch for types dew doesn't cover natively — all its methods accept `any`. Use `EnumColumn` for string-based enum types — it gives you compile-time safety by restricting values to your custom type.
+Use `Int64Column` for `bigserial` / `bigint` primary keys and large counters. Use `DecimalColumn` for `NUMERIC` / `DECIMAL` columns — values are passed as strings to avoid floating-point precision loss. Use `AnyColumn` as an escape hatch for types dew doesn't cover natively. Use `EnumColumn` for string-based enum types — it gives you compile-time safety by restricting values to your custom type.
 </Callout>
 
 ### EnumColumn
@@ -139,7 +140,7 @@ All column types share these common operators:
 | `col.NotIn(vals...)` | `col NOT IN (?, ?, ...)` |
 | `col.InSub(subquery)` | `col IN (SELECT ...)` |
 
-Numeric columns (`IntColumn`, `Int64Column`, `FloatColumn`, `Float32Column`, `AnyColumn`) also have:
+Numeric columns (`IntColumn`, `Int64Column`, `FloatColumn`, `Float32Column`, `DecimalColumn`, `AnyColumn`) also have:
 
 | Method | SQL |
 |--------|-----|
