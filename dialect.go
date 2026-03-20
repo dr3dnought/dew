@@ -29,3 +29,9 @@ type MSSQLDialect struct{}
 func (d MSSQLDialect) Placeholder(index int) string {
 	return "@p" + strconv.Itoa(index+1)
 }
+
+type DuckDBDialect struct{}
+
+func (d DuckDBDialect) Placeholder(index int) string {
+	return "$" + strconv.Itoa(index+1)
+}
