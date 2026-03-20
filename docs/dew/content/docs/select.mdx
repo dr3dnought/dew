@@ -186,6 +186,29 @@ users, err := Users.From(db).
     All()
 ```
 
+## Row locking
+
+Use `ForUpdate()` or `ForShare()` within a transaction to lock selected rows:
+
+```go
+// SELECT * FROM users WHERE users.id = $1 FOR UPDATE
+user, err := Users.From(tx).Where(Users.ID.Eq(1)).ForUpdate().One(ctx)
+
+// FOR SHARE (shared lock)
+user, err := Users.From(tx).Where(Users.ID.Eq(1)).ForShare().One(ctx)
+```
+
+Add `NoWait()` to fail immediately if the row is locked, or `SkipLocked()` to skip locked rows:
+
+```go
+// FOR UPDATE NOWAIT — error if row is locked
+user, err := Users.From(tx).Where(Users.ID.Eq(1)).ForUpdate().NoWait().One(ctx)
+
+// FOR UPDATE SKIP LOCKED — skip locked rows (useful for job queues)
+jobs, err := Jobs.From(tx).Where(Jobs.Status.Eq("pending")).
+    Limit(10).ForUpdate().SkipLocked().All(ctx)
+```
+
 ## Clone
 
 `Clone()` creates a deep copy of the selector, safe to mutate independently:

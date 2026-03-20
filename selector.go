@@ -46,6 +46,8 @@ type Selector[T any] struct {
 
 	groupBys []Expression
 	havings  []Expression
+
+	lockClause string
 }
 
 func From[T any](db Querier, schema Tabler) *Selector[T] {
@@ -154,6 +156,26 @@ func (s *Selector[T]) RightJoin(schema Tabler, onLeft Column, onRight Column) *S
 	return s
 }
 
+func (s *Selector[T]) ForUpdate() *Selector[T] {
+	s.lockClause = "FOR UPDATE"
+	return s
+}
+
+func (s *Selector[T]) ForShare() *Selector[T] {
+	s.lockClause = "FOR SHARE"
+	return s
+}
+
+func (s *Selector[T]) NoWait() *Selector[T] {
+	s.lockClause += " NOWAIT"
+	return s
+}
+
+func (s *Selector[T]) SkipLocked() *Selector[T] {
+	s.lockClause += " SKIP LOCKED"
+	return s
+}
+
 func (s *Selector[T]) ToSql() (string, []any, error) {
 	return s.buildQuery(), s.args, nil
 }
@@ -166,6 +188,7 @@ func (s *Selector[T]) Clone() *Selector[T] {
 		fromAlias:    s.fromAlias,
 		limitCount:   s.limitCount,
 		offsetCount:  s.offsetCount,
+		lockClause:   s.lockClause,
 	}
 
 	if s.ctes != nil {
@@ -617,6 +640,10 @@ func (s *Selector[T]) buildRawQuery() string {
 	}
 	if s.offsetCount > 0 {
 		query += fmt.Sprintf(" OFFSET %d", s.offsetCount)
+	}
+
+	if s.lockClause != "" {
+		query += " " + s.lockClause
 	}
 
 	s.args = finalArgs

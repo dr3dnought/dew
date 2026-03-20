@@ -1580,6 +1580,77 @@ func TestDB_MapError_SentinelErrors(t *testing.T) {
 	}
 }
 
+// ─── Row Locking ─────────────────────────────────────────────
+
+func TestSelector_ForUpdate(t *testing.T) {
+	sql, _, _ := testTable.From(pgDB).Where(tID.Eq(1)).ForUpdate().ToSql()
+	want := "SELECT * FROM users WHERE users.id = $1 FOR UPDATE"
+	if sql != want {
+		t.Errorf("got %q, want %q", sql, want)
+	}
+}
+
+func TestSelector_ForUpdate_NoWait(t *testing.T) {
+	sql, _, _ := testTable.From(pgDB).Where(tID.Eq(1)).ForUpdate().NoWait().ToSql()
+	want := "SELECT * FROM users WHERE users.id = $1 FOR UPDATE NOWAIT"
+	if sql != want {
+		t.Errorf("got %q, want %q", sql, want)
+	}
+}
+
+func TestSelector_ForUpdate_SkipLocked(t *testing.T) {
+	sql, _, _ := testTable.From(pgDB).Where(tID.Eq(1)).ForUpdate().SkipLocked().ToSql()
+	want := "SELECT * FROM users WHERE users.id = $1 FOR UPDATE SKIP LOCKED"
+	if sql != want {
+		t.Errorf("got %q, want %q", sql, want)
+	}
+}
+
+func TestSelector_ForShare(t *testing.T) {
+	sql, _, _ := testTable.From(pgDB).Where(tID.Eq(1)).ForShare().ToSql()
+	want := "SELECT * FROM users WHERE users.id = $1 FOR SHARE"
+	if sql != want {
+		t.Errorf("got %q, want %q", sql, want)
+	}
+}
+
+func TestSelector_ForUpdate_WithLimitOffset(t *testing.T) {
+	sql, _, _ := testTable.From(pgDB).Where(tAge.Gt(18)).Limit(10).Offset(5).ForUpdate().ToSql()
+	want := "SELECT * FROM users WHERE users.age > $1 LIMIT 10 OFFSET 5 FOR UPDATE"
+	if sql != want {
+		t.Errorf("got %q, want %q", sql, want)
+	}
+}
+
+func TestSelector_ForUpdate_MySQL(t *testing.T) {
+	sql, _, _ := testTable.From(myDB).Where(tID.Eq(1)).ForUpdate().ToSql()
+	want := "SELECT * FROM users WHERE users.id = ? FOR UPDATE"
+	if sql != want {
+		t.Errorf("got %q, want %q", sql, want)
+	}
+}
+
+func TestSelector_ForUpdate_Clone(t *testing.T) {
+	base := testTable.From(pgDB).Where(tID.Eq(1)).ForUpdate()
+	clone := base.Clone()
+
+	baseSql, _, _ := base.ToSql()
+	cloneSql, _, _ := clone.ToSql()
+
+	if baseSql != cloneSql {
+		t.Errorf("clone sql = %q, want %q", cloneSql, baseSql)
+	}
+
+	// Mutate clone — should not affect base
+	clone.ForShare()
+	baseSql2, _, _ := base.ToSql()
+	cloneSql2, _, _ := clone.ToSql()
+
+	if baseSql2 == cloneSql2 {
+		t.Errorf("clone mutation affected base: both = %q", baseSql2)
+	}
+}
+
 // ─── Schema Factory Methods ─────────────────────────────────
 
 func TestSchemaFactoryMethods(t *testing.T) {
